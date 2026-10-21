@@ -51,7 +51,7 @@ const assert = require("node:assert/strict");
   await page.click('[data-config="society"]');
   assert.ok(
     (await page.locator("#mortalityHint").textContent()).includes(
-      "avant 15 ans",
+      "avant 15 years",
     ),
   );
   assert.ok(
@@ -73,11 +73,11 @@ const assert = require("node:assert/strict");
   await page.waitForFunction(() =>
     document
       .querySelector("#mortalityMetrics")
-      .textContent.includes("Enfants morts"),
+      .textContent.includes("Children who died"),
   );
   assert.ok(
     !(await page.locator("#mortalityMetrics").textContent()).includes(
-      "Non simulé",
+      "Not simulated",
     ),
   );
   await page.screenshot({
@@ -124,7 +124,7 @@ const assert = require("node:assert/strict");
   );
   assert.ok(
     (await page.locator("#personFacts").textContent()).includes(
-      "Fertilité biologique",
+      "Biological fertility",
     ),
   );
   await page.click("#locatePerson");

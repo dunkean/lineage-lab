@@ -14,12 +14,12 @@ from urllib.request import urlopen
 import pytest
 from pydantic import ValidationError
 
-from cousinade.archive_protocol import open_archive
-from cousinade.config import Scenario, load_scenario
-from cousinade.engine import generate
-from cousinade.hybrid_archive import HybridArchive
-from cousinade.server import make_handler
-from cousinade.studio import Studio
+from lineage_lab.archive_protocol import open_archive
+from lineage_lab.config import Scenario, load_scenario
+from lineage_lab.engine import generate
+from lineage_lab.hybrid_archive import HybridArchive
+from lineage_lab.server import make_handler
+from lineage_lab.studio import Studio
 
 
 @pytest.fixture(scope="module")
@@ -353,7 +353,7 @@ def test_fantasy_periods_events_and_bounded_regulation(tmp_path):
 
 
 def test_only_core_uses_native_engine_and_queries_never_simulate(monkeypatch, tmp_path):
-    from cousinade import engine
+    from lineage_lab import engine
 
     native = engine.Engine
     simulated = []

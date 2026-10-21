@@ -39,15 +39,15 @@ def make_handler(archive: Archive, studio: Studio | None = None):
             }
             host = self.headers.get("Host")
             if host not in allowed or origin and origin != f"http://{host}":
-                self.reply({"error": "Origine refusée"}, 403)
+                self.reply({"error": "Origin rejected"}, 403)
                 return
             if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
-                self.reply({"error": "Envoyer une configuration JSON"}, 415)
+                self.reply({"error": "Send a JSON configuration"}, 415)
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 1_000_000:
-                    raise ValueError("Configuration vide ou supérieure à 1 Mo")
+                    raise ValueError("Configuration is empty or exceeds 1 MB")
                 payload = json.loads(self.rfile.read(length))
                 route = urlsplit(self.path).path
                 if route == "/api/generate":
@@ -78,7 +78,7 @@ def make_handler(archive: Archive, studio: Studio | None = None):
                 elif route == "/api/select":
                     self.reply(studio.select(payload["id"]))
                 else:
-                    self.reply({"error": "Route inconnue"}, 404)
+                    self.reply({"error": "Unknown route"}, 404)
             except BusyError as exc:
                 self.reply({"error": str(exc)}, 409)
             except (ValueError, KeyError, TypeError, yaml.YAMLError) as exc:

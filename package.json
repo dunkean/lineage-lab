@@ -1,5 +1,5 @@
 {
-  "name": "cousinade-browser-checks",
+  "name": "lineage-lab-browser-checks",
   "private": true,
   "scripts": {
     "test:browser": "node tests/browser/genealogy_studio.cjs",

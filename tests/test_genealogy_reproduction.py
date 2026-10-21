@@ -4,10 +4,10 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from cousinade.config import Scenario
-from cousinade.engine import Engine, generate
-from cousinade.reproduction import ReproductiveTraits, mortality_summary
-from cousinade.schema import NO_YEAR, STORED_FIELDS
+from lineage_lab.config import Scenario
+from lineage_lab.engine import Engine, generate
+from lineage_lab.reproduction import ReproductiveTraits, mortality_summary
+from lineage_lab.schema import NO_YEAR, STORED_FIELDS
 
 
 @pytest.mark.parametrize("backend", ["compiled", "reference"])

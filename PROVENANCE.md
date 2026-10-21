@@ -1,9 +1,7 @@
-# Origine
+# Provenance
 
-Extraction autonome du module `src/genealogy/` de `dunkean/AI_RPG_Generator`, réalisée le 21 octobre 2026.
-Base Git source : `b6e9142`. L'extraction inclut l'état de travail local, notamment le mode hybride `cohort-runtime-v2` et ses tests non encore commités dans le dépôt source.
+Lineage Lab was extracted from the genealogy module of `dunkean/AI_RPG_Generator` on October 21, 2026. Source baseline: `b6e9142`, plus the local working version, including the `cohort-runtime-v2` hybrid model and its tests.
 
-Seuls le moteur de population, ses scénarios, son studio, ses tests et sa documentation sont repris. Le pipeline LLM, les clés et configurations privées, environnements virtuels, archives calculées et caches sont exclus. Le dépôt source est conservé intact.
+Only population code, scenarios, browser assets, tests and documentation were extracted. The LLM pipeline, private settings, credentials, calculated archives and caches were excluded. The source RPG repository was left intact.
 
-Les formats d'archives existants et leurs marqueurs sont conservés pour compatibilité. Les chemins d'import et la commande deviennent `cousinade`.
-Les bibliothèques JavaScript embarquées conservent leurs avis de licence dans `src/cousinade/vendor/`. Les anciens rapports de revue sont des documents historiques : le guide hybride et le code actuel prévalent sur les projets d'architecture antérieurs.
+The standalone repository was renamed in place; its commit history is preserved. The Python package is `lineage_lab` and the CLI is `lineage-lab`. Existing archive-format markers remain unchanged for compatibility. Bundled JavaScript libraries retain their notices under `src/lineage_lab/vendor/`.

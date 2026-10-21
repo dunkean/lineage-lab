@@ -13,7 +13,7 @@ from .engine import generate
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="cousinade")
+    parser = argparse.ArgumentParser(prog="lineage-lab")
     commands = parser.add_subparsers(dest="command", required=True)
     build = commands.add_parser(
         "generate", help="Simulate a YAML scenario into a new SQLite archive"

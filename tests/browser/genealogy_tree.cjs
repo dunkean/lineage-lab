@@ -15,7 +15,7 @@ const assert = require("node:assert/strict");
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8772");
     await page.waitForFunction(() =>
-      document.querySelector("#treeNote").textContent.includes("affichées"),
+      document.querySelector("#treeNote").textContent.includes("shown"),
     );
     await page.click("#tabIndividual");
     for (const depth of ["2", "6", "12", "2"]) {
@@ -32,7 +32,7 @@ const assert = require("node:assert/strict");
           document
             .querySelector("#treeNote")
             .textContent.startsWith(
-              `${actual} / ${depth} générations affichées`,
+              `${actual} / ${depth} generations shown`,
             ),
         { depth, actual },
       );
@@ -42,7 +42,7 @@ const assert = require("node:assert/strict");
       );
       assert.equal(
         (await page.locator("#treeNote").textContent()).includes(
-          "dernière génération potentiellement incomplète",
+          "last generation may be incomplete",
         ),
         result.truncated,
       );
@@ -64,7 +64,7 @@ const assert = require("node:assert/strict");
     await page.waitForTimeout(500);
     assert.ok(
       (await page.locator("#treeNote").textContent()).startsWith(
-        `${actual} / 2 générations affichées`,
+        `${actual} / 2 generations shown`,
       ),
     );
     assert.deepEqual(errors, []);

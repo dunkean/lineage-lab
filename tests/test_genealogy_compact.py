@@ -5,10 +5,10 @@ from contextlib import closing
 import numpy as np
 import pytest
 
-from cousinade.compact import CompactArchive, export_compact
-from cousinade.config import Scenario
-from cousinade.engine import generate
-from cousinade.store import Archive
+from lineage_lab.compact import CompactArchive, export_compact
+from lineage_lab.config import Scenario
+from lineage_lab.engine import generate
+from lineage_lab.store import Archive
 
 
 def test_packed_export_roundtrips_people_dates_and_relations(tmp_path):

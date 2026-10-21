@@ -7,11 +7,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from cousinade.config import Scenario, load_scenario
-from cousinade.engine import Engine, generate
-from cousinade.kernels import census_counts, census_counts_parallel, stable_groups
-from cousinade.store import Archive
-from cousinade.studio import Studio
+from lineage_lab.config import Scenario, load_scenario
+from lineage_lab.engine import Engine, generate
+from lineage_lab.kernels import census_counts, census_counts_parallel, stable_groups
+from lineage_lab.store import Archive
+from lineage_lab.studio import Studio
 
 
 class Trace:
@@ -109,7 +109,7 @@ def test_studio_default_never_writes(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("No SQLite or filesystem write permitted")
 
-    monkeypatch.setattr("cousinade.engine.Store", forbidden)
+    monkeypatch.setattr("lineage_lab.engine.Store", forbidden)
     monkeypatch.setattr(Path, "mkdir", forbidden)
     initial = generate(Scenario(initial_population=50, years=2), None)
     studio = Studio(initial)

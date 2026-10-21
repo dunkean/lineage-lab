@@ -9,5 +9,5 @@ if not exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" -m pip install -e . --no-deps
     if errorlevel 1 exit /b 1
 )
-echo Cousinade: http://127.0.0.1:8772
-".venv\Scripts\python.exe" -m cousinade studio --port 8772
+echo Lineage Lab: http://127.0.0.1:8772
+".venv\Scripts\python.exe" -m lineage_lab studio --port 8772

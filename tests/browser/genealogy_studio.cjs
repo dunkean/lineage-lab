@@ -18,6 +18,9 @@ fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
   await page.waitForFunction(
     () => document.querySelector("#treeNote").textContent,
   );
+  assert.equal(await page.locator("html").getAttribute("lang"), "en");
+  assert.equal(await page.locator("h1").textContent(), "Lineage Lab");
+  assert.equal(await page.locator("#tabIndividual").textContent(), "03 · People & lineages");
   await page.screenshot({
     path: "output/genealogy/screenshots/config-final.png",
     fullPage: true,

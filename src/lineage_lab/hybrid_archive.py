@@ -170,7 +170,7 @@ class HybridArchive:
         result["name"] = (
             syllables[digest[0] % len(syllables)]
             + ("a" if raw["sex"] else "on")
-            + f" de {raw['birth_place']}"
+            + f" of {raw['birth_place']}"
         )
         return result
 

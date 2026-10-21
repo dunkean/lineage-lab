@@ -7,11 +7,11 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from cousinade.config import Scenario, virtual_map
-from cousinade.engine import Engine, generate
-from cousinade.kernels import mark_ancestors, shares_ancestor
-from cousinade.politics import PoliticalTimeline
-from cousinade.store import Archive
+from lineage_lab.config import Scenario, virtual_map
+from lineage_lab.engine import Engine, generate
+from lineage_lab.kernels import mark_ancestors, shares_ancestor
+from lineage_lab.politics import PoliticalTimeline
+from lineage_lab.store import Archive
 
 
 def test_dispersed_map_keeps_all_500_sites_and_seed():

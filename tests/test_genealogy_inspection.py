@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from cousinade.inspection import resident_atlas
+from lineage_lab.inspection import resident_atlas
 
 
 def test_atlas_filters_all_residents_and_samples_stable_real_ids():

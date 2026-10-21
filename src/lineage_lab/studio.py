@@ -55,7 +55,7 @@ class Studio:
     def describe(archive):
         if getattr(archive, "ephemeral", False):
             return {
-                "name": "Monde en mémoire",
+                "name": "World in memory",
                 "seed": archive.config.seed,
                 "summary": archive.summary,
                 "created": archive.created,
@@ -134,7 +134,7 @@ class Studio:
         config = self.validate(payload)
         with self.lock:
             if self.job and self.job["state"] == "running":
-                raise BusyError("Une génération est déjà en cours.")
+                raise BusyError("A simulation is already running.")
             key = uuid4().hex
             self.cancel_event.clear()
             self.job = {
@@ -145,9 +145,9 @@ class Studio:
                 "end_year": config.start_year + config.duration,
                 "population": config.initial_population,
                 "progress": 0,
-                "phase": "Simulation annuelle · régulation dynamique"
+                "phase": "Annual simulation · dynamic regulation"
                 if config.target_mode == "bounded" and config.target_population
-                else "Simulation annuelle",
+                else "Annual simulation",
             }
             self.worker = threading.Thread(target=self._run, args=(key, config), daemon=True)
             self.worker.start()
@@ -157,7 +157,7 @@ class Studio:
         with self.lock:
             if self.job and self.job["state"] == "running":
                 self.cancel_event.set()
-                self.job["phase"] = "Arrêt demandé · fin de l'année courante"
+                self.job["phase"] = "Stop requested · finishing the current year"
             return self.status()
 
     def _run(self, key, config):
@@ -165,18 +165,18 @@ class Studio:
 
         def progress(year, count):
             if self.cancel_event.is_set():
-                raise CancelledError("Génération annulée")
+                raise CancelledError("Generation cancelled")
             with self.lock:
                 self.job.update(
                     year=year,
                     population=count,
                     phase=(
-                        "Finalisation du monde en mémoire"
+                        "Finalizing world in memory"
                         if self.memory_only
-                        else "Enregistrement de l'archive"
+                        else "Saving archive"
                     )
                     if year == config.start_year + config.duration
-                    else "Simulation annuelle",
+                    else "Annual simulation",
                     progress=(year - config.start_year) / config.duration,
                 )
 

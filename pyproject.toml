@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cousinade"
+name = "lineage-lab"
 version = "0.1.0"
-description = "Tiny worldbuilding sandbox. Suspiciously large family reunion."
+description = "A standalone sandbox for population histories and genealogies."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = ["numpy>=1.24", "numba>=0.67,<0.68", "pydantic>=2", "pyyaml>=6"]
@@ -14,13 +14,13 @@ dependencies = ["numpy>=1.24", "numba>=0.67,<0.68", "pydantic>=2", "pyyaml>=6"]
 dev = ["pytest>=7", "ruff>=0.1", "build>=1"]
 
 [project.scripts]
-cousinade = "cousinade.cli:main"
+lineage-lab = "lineage_lab.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-cousinade = ["explorer.html", "studio.css", "studio.js", "vendor/*", "presets/*.yaml"]
+lineage_lab = ["explorer.html", "studio.css", "studio.js", "vendor/*", "presets/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

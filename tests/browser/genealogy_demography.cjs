@@ -15,7 +15,7 @@ const fs = require("node:fs");
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("response", (r) => { if (r.status() >= 400) errors.push(r.url()); });
     await page.goto(process.env.STUDIO_URL || "http://127.0.0.1:8794");
-    await page.waitForFunction(() => document.querySelector("#treeNote").textContent.includes("affichées"));
+    await page.waitForFunction(() => document.querySelector("#treeNote").textContent.includes("shown"));
     await page.click("#tabIndividual");
     const overview = await page.evaluate(() => api("overview"));
     const current = await page.locator("#placePicker").inputValue();
@@ -61,7 +61,7 @@ const fs = require("node:fs");
     await page.fill("#identity", child.id.split(":").slice(-2).join("."));
     await page.locator("#search button.primary").click();
     await page.waitForFunction((id) => person?.id === id &&
-      document.querySelector("#treeNote").textContent.includes("affichées"), child.id);
+      document.querySelector("#treeNote").textContent.includes("shown"), child.id);
     const father = page.locator(`.treeNode[data-person="${child.father}"]`);
     await father.click();
     await page.waitForFunction((id) => person?.id === id &&
@@ -69,14 +69,14 @@ const fs = require("node:fs");
     assert.equal(await page.locator("#personSource").getAttribute("data-source"), "projected");
     await page.click("#personBack");
     await page.waitForFunction((id) => person?.id === id &&
-      document.querySelector("#treeNote").textContent.includes("affichées"), child.id);
+      document.querySelector("#treeNote").textContent.includes("shown"), child.id);
     await page.locator(`.treeNode[data-person="${child.mother}"]`).focus();
     await page.keyboard.press("Enter");
     await page.waitForFunction((id) => person?.id === id, child.mother);
     assert.equal(await page.locator("#personSource").getAttribute("data-source"), "projected");
     await page.click("#personBack");
     await page.waitForFunction((id) => person?.id === id &&
-      document.querySelector("#treeNote").textContent.includes("affichées"), child.id);
+      document.querySelector("#treeNote").textContent.includes("shown"), child.id);
     fs.mkdirSync("output/genealogy/screenshots", { recursive: true });
     await page.screenshot({ path: "output/genealogy/screenshots/demography-sources.png", fullPage: true });
     assert.deepEqual(errors, []);

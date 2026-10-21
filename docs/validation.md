@@ -1,11 +1,11 @@
-# Vérification de la version autonome
+# Validation
 
-Vérifications locales du 21 octobre 2026, Windows, Python 3.12.13. Ces contrôles concernent la démo et le paquet extraits ; les grandes mesures historiques restent dans les autres documents.
+The standalone application is checked with Python 3.12.13 on Windows. Runtime versions are pinned in `requirements.lock`.
 
-- 108 tests Python : modes complet/hybride, cohérence des filiations et événements, déterminisme, archives, concurrence, réglages, presets hors du checkout et ressources embarquées.
-- Ruff : source et tests passent.
-- Parcours Edge sans interface : génération, 500 lieux, nations datées, exploration, configuration JSON, formulaire mobile sans débordement ; mode hybride, IDs opaques, profondeur des familles et retour au mode complet.
-- Construction wheel/sdist ; installation du wheel dans un environnement vierge hors du checkout avec actifs et scénarios embarqués.
-- Les benchmarks à plusieurs millions de personnes n'ont pas été relancés pour cette extraction.
+- 108 Python tests cover full/hybrid genealogies, events, determinism, archives, concurrency, settings, bundled presets outside the checkout and packaged web assets.
+- Ruff checks source and tests.
+- Edge checks cover generation, 500 settlements, dated nations, exploration, JSON editing, mobile layout, opaque hybrid IDs, lineage depth and return to full mode.
+- Wheel and source distributions are built, with the installed wheel exercised in a fresh environment outside the checkout.
+- The large historical benchmarks were not rerun for extraction or localization.
 
-Reproduire avec les commandes de README.md. Aucun lien avec le projet RPG source ou un service LLM n'est requis.
+Use the commands in README.md. GitHub Actions runs Python tests, Ruff and package builds. No original RPG repository or LLM service is required.

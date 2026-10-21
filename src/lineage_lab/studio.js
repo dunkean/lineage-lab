@@ -2,7 +2,7 @@
 
 const $ = (id) => document.getElementById(id),
   NS = "http://www.w3.org/2000/svg",
-  fmt = (n) => Number(n ?? 0).toLocaleString("fr-FR");
+  fmt = (n) => Number(n ?? 0).toLocaleString("en-US");
 
 const el = (tag, value, cls) => {
   const e = document.createElement(tag);
@@ -17,7 +17,7 @@ const personIdentity = (value) => {
     return `h:${world.summary.world_id}:${text.replace(".", ":")}`;
   if (/^\d+$/.test(text)) return Number(text);
   if (/^h:[a-f0-9]{64}:\d+:\d+$/.test(text)) return text;
-  throw Error("Saisir un identifiant de personnage de ce monde.");
+  throw Error("Enter a character ID from this world.");
 };
 
 const displayIdentity = (value) => {
@@ -29,17 +29,17 @@ const personSource = (p) => p.source ?? (
   String(p.id).startsWith("h:") ? (String(p.id).split(":")[2] === "0" ? "core" : "projected") : "simulated"
 );
 const sourceLabel = (p) => ({
-  core: "Non procédural · fiche simulée",
-  projected: "Généalogie procédurale",
-  simulated: "Fiche simulée",
+  core: "Simulated person",
+  projected: "Procedural genealogy",
+  simulated: "Simulated person",
 }[personSource(p)]);
 
 const roleLabel = (role) => ({
-  noble_house: "Lignée noble",
-  bourgeois_lineage: "Famille bourgeoise",
-  local_notable: "Notable",
-  innkeeper: "Aubergiste",
-  common_hero: "Héros du commun",
+  noble_house: "Noble lineage",
+  bourgeois_lineage: "Merchant family",
+  local_notable: "Local notable",
+  innkeeper: "Innkeeper",
+  common_hero: "Commoner hero",
 }[role] ?? role);
 
 const svg = (tag, attrs, parent) => {
@@ -95,7 +95,7 @@ const api = async (path, payload) => {
     try {
       message = (await r.json()).error;
     } catch {
-      message = "Requête refusée (" + r.status + ")";
+      message = "Request rejected (" + r.status + ")";
     }
     throw Error(message);
   }
@@ -111,7 +111,7 @@ function checkForm() {
     if (!i.checkValidity()) {
       configTab(i.closest(".configPanel").id.replace("config-", ""));
       i.reportValidity();
-      throw Error("Corrigez le champ invalide avant de générer ou exporter.");
+      throw Error("Correct the invalid field before generating or exporting.");
     }
   }
 }
@@ -138,7 +138,7 @@ let activeTab = "config";
 function tab(which) {
   activeTab = which;
   document.querySelector("#exploreView h2").textContent =
-    which === "individual" ? "Habitants & lignées" : "Le monde en mouvement";
+    which === "individual" ? "People & lineages" : "A changing world";
   $("configView").hidden = which !== "config";
   $("exploreView").hidden = which === "config";
   $("globalView").hidden = which !== "explore";
@@ -191,21 +191,21 @@ const basics = {
 };
 
 const demographic = [
-  ["demography", "female_infertility_rate", "Infertilité · femmes", 0.01],
-  ["demography", "male_infertility_rate", "Infertilité · hommes", 0.01],
-  ["society", "childfree_rate", "Choix de ne pas avoir d’enfants", 0.01],
-  ["demography", "fertility_peak", "Pic de fécondité", 0.01],
-  ["demography", "birth_spacing", "Espacement des naissances · ans", 1],
-  ["demography", "infant_mortality", "Mortalité infantile", 0.01],
-  ["demography", "child_mortality", "Mortalité enfant", 0.001],
-  ["demography", "adult_mortality", "Mortalité adulte", 0.001],
-  ["society", "marriage_rate", "Taux de nouvelles unions", 0.01],
-  ["society", "divorce_rate", "Taux de divorce", 0.001],
-  ["society", "migration_rate", "Taux de migration", 0.001],
-  ["society", "marriage_radius", "Rayon des unions", 1],
-  ["society", "migration_radius", "Rayon des migrations", 1],
-  ["society", "distance_scale", "Atténuation par la distance", 1],
-  ["society", "kinship_depth", "Contrôle de parenté · générations", 1],
+  ["demography", "female_infertility_rate", "Infertility · women", 0.01],
+  ["demography", "male_infertility_rate", "Infertility · men", 0.01],
+  ["society", "childfree_rate", "Choice not to have children", 0.01],
+  ["demography", "fertility_peak", "Peak fertility", 0.01],
+  ["demography", "birth_spacing", "Birth spacing · years", 1],
+  ["demography", "infant_mortality", "Infant mortality", 0.01],
+  ["demography", "child_mortality", "Child mortality", 0.001],
+  ["demography", "adult_mortality", "Adult mortality", 0.001],
+  ["society", "marriage_rate", "New union rate", 0.01],
+  ["society", "divorce_rate", "Divorce rate", 0.001],
+  ["society", "migration_rate", "Migration rate", 0.001],
+  ["society", "marriage_radius", "Marriage radius", 1],
+  ["society", "migration_radius", "Migration radius", 1],
+  ["society", "distance_scale", "Distance decay", 1],
+  ["society", "kinship_depth", "Kinship check · generations", 1],
 ];
 
 function inputCell(
@@ -241,7 +241,7 @@ function inputCell(
   const heading = row.closest("table")?.querySelectorAll("th")[
     row.children.length
   ]?.textContent;
-  i.setAttribute("aria-label", heading || "Valeur de la ligne");
+  i.setAttribute("aria-label", heading || "Row value");
   td.append(i);
   row.append(td);
 }
@@ -249,7 +249,7 @@ function inputCell(
 function removeCell(row, list, index) {
   const td = document.createElement("td"),
     b = el("button", "×", "icon");
-  b.title = "Supprimer cette ligne";
+  b.title = "Remove row";
   b.onclick = () => {
     list.splice(index, 1);
     renderProfiles();
@@ -283,7 +283,7 @@ function activityCell(row, profile) {
   td.append(details);
   row.append(td);
   function render() {
-    summary.textContent = Object.keys(profile.activities).length + " activités";
+    summary.textContent = Object.keys(profile.activities).length + " activities";
     details
       .querySelectorAll(".weightRow, .addWeight")
       .forEach((e) => e.remove());
@@ -293,18 +293,18 @@ function activityCell(row, profile) {
         weight = el("input"),
         remove = el("button", "×", "icon");
       name.value = key;
-      name.setAttribute("aria-label", "Activité");
+      name.setAttribute("aria-label", "Activity");
       weight.type = "number";
       weight.min = 0;
       weight.step = "any";
       weight.required = true;
       weight.value = value;
-      weight.setAttribute("aria-label", "Poids de l’activité");
+      weight.setAttribute("aria-label", "Activity weight");
       name.onchange = safely(() => {
         const next = name.value.trim();
         if (!next || (next !== key && next in profile.activities)) {
-          name.setCustomValidity("Nom unique et non vide requis");
-          throw Error("Activité : nom unique et non vide requis.");
+          name.setCustomValidity("A unique, nonempty name is required");
+          throw Error("Activity: a unique, nonempty name is required.");
         }
         name.setCustomValidity("");
         profile.activities[next] = profile.activities[key];
@@ -316,7 +316,7 @@ function activityCell(row, profile) {
         profile.activities[key] = Number(weight.value);
         syncPreview();
       };
-      remove.title = "Supprimer l’activité";
+      remove.title = "Remove activity";
       remove.onclick = () => {
         delete profile.activities[key];
         render();
@@ -325,11 +325,11 @@ function activityCell(row, profile) {
       line.append(name, weight, remove);
       details.append(line);
     }
-    const add = el("button", "+ Activité", "addWeight icon");
+    const add = el("button", "+ Activity", "addWeight icon");
     add.onclick = () => {
       let i = 1;
-      while ("activité_" + i in profile.activities) i++;
-      profile.activities["activité_" + i] = 1;
+      while ("activity_" + i in profile.activities) i++;
+      profile.activities["activity_" + i] = 1;
       render();
       syncPreview();
     };
@@ -340,7 +340,7 @@ function activityCell(row, profile) {
 function renameRace(race, next) {
   next = next.trim();
   if (!next || config.races.some((r) => r !== race && r.name === next))
-    throw Error("Le nom du peuple doit être unique et non vide.");
+    throw Error("An ancestry name must be unique and nonempty.");
   const old = race.name;
   for (const c of config.crossbreeding) {
     c.parents = c.parents.map((n) => (n === old ? next : n));
@@ -368,7 +368,7 @@ function renderCrossSummary() {
         r.parents.join(" × ") +
           " → " +
           Object.keys(r.offspring).join(", ") +
-          " · affinité " +
+          " · affinity " +
           r.marriage_affinity,
         "tag",
       ),
@@ -389,7 +389,7 @@ function renderProfiles() {
           !next ||
           config.nations.some((item) => item !== n && item.name === next)
         )
-          throw Error("Nom de nation unique et non vide requis.");
+          throw Error("A unique, nonempty nation name is required.");
         for (const contact of config.nation_contacts)
           contact.nations = contact.nations.map((name) =>
             name === old ? next : name,
@@ -410,13 +410,13 @@ function renderProfiles() {
           : Number.isInteger(v) && v >= 0 && v < config.virtual_settlements;
         if (v !== null && !valid)
           throw Error(
-            "La capitale de « " +
+            "The capital of “ " +
               n.name +
-              " » doit être un ID de lieu existant. Videz le champ pour un placement automatique.",
+              " ” must reference an existing settlement ID. Clear the field for automatic placement.",
           );
         n.capital = v;
       },
-      { nullable: true, placeholder: "Automatique" },
+      { nullable: true, placeholder: "Automatic" },
     );
     const capital = row.lastElementChild.querySelector("input");
     capital.step = "1";
@@ -424,10 +424,10 @@ function renderProfiles() {
     if (!config.settlements.length)
       capital.max = config.virtual_settlements - 1;
     capital.title = config.settlements.length
-      ? "ID d’un lieu de la carte explicite ; vide = automatique"
-      : "ID entre 0 et " +
+      ? "Settlement ID on the explicit map; blank = automatic"
+      : "ID between 0 and " +
         (config.virtual_settlements - 1) +
-        " ; vide = automatique";
+        " ; blank = automatic";
     removeCell(row, config.nations, index);
     $("nationProfiles").append(row);
   });
@@ -486,14 +486,14 @@ function renderProfiles() {
           if (v === null) delete r.demography[field];
           else r.demography[field] = v;
         },
-        { nullable: true, placeholder: "Hérite : " + config.demography[field] },
+        { nullable: true, placeholder: "Inherits: " + config.demography[field] },
       );
     const td = el("td"),
       remove = el("button", "×", "icon");
-    remove.title = "Supprimer le peuple";
+    remove.title = "Remove ancestry";
     remove.onclick = safely(() => {
       if (config.races.length === 1)
-        throw Error("Conservez au moins un peuple.");
+        throw Error("Keep at least one ancestry.");
       if (
         config.crossbreeding.some(
           (c) => c.parents.includes(r.name) || r.name in c.offspring,
@@ -504,7 +504,7 @@ function renderProfiles() {
         config.events.some((e) => e.races.includes(r.name))
       )
         throw Error(
-          "Ce peuple est référencé dans des croisements, lieux ou événements. Retirez ces références dans le JSON avant de le supprimer.",
+          "This ancestry is referenced by crossbreeding rules, settlements or events. Remove those references in JSON before deleting it.",
         );
       config.races.splice(index, 1);
       renderProfiles();
@@ -536,7 +536,7 @@ function renderProfiles() {
         (e.settlements = v.trim()
           ? v.split(",").map((x) => {
               if (!/^\d+$/.test(x.trim()))
-                throw Error("IDs : nombres séparés par des virgules");
+                throw Error("IDs: comma-separated numbers");
               return Number(x);
             })
           : []),
@@ -574,18 +574,18 @@ function populate(source) {
       i.min = 0;
       i.max = 1;
       i.title =
-        "Part des individus recevant cet état à vie, de 0 à 1. Ce n’est pas un taux annuel. Les deux partenaires doivent pouvoir et vouloir procréer.";
-      wrap.append(el("small", "Part à vie · 0 à 1", "small"));
+        "Share of people assigned this lifelong state, from 0 to 1. This is not an annual rate. Both partners must be able and willing to reproduce.";
+      wrap.append(el("small", "Lifelong share · 0 to 1", "small"));
     }
     if (key === "infant_mortality")
       i.title =
-        "Probabilité de décès durant l’année de naissance. Voir l’indication de survie ci-dessous.";
+        "Probability of death during the birth year. See the survival estimate below.";
     if (key === "child_mortality")
       i.title =
-        "Probabilité annuelle après l’année de naissance, jusqu’à l’âge enfant maximal configuré.";
+        "Annual probability after the birth year, through the configured maximum childhood age.";
     if (key === "adult_mortality")
       i.title =
-        "Risque annuel de base, augmenté avec l’âge par le modèle de vieillissement.";
+        "Annual baseline risk, increased with age by the aging model.";
     wrap.append(l, i);
     $("demographicFields").append(wrap);
   }
@@ -600,7 +600,7 @@ function setJsonDirty(flag) {
     e.disabled = flag;
   if (flag)
     $("configValidated").textContent =
-      "Édition JSON : appliquer ou annuler pour retrouver les contrôles.";
+      "Editing JSON: apply or cancel to unlock the controls.";
 }
 $("configJson").oninput = () => setJsonDirty(true);
 $("discardJson").onclick = () => syncPreview();
@@ -623,7 +623,7 @@ function syncPreview() {
           .querySelector("input,select")
           ?.setAttribute(
             "aria-label",
-            table.querySelectorAll("th")[index]?.textContent || "Valeur",
+            table.querySelectorAll("th")[index]?.textContent || "Value",
           ),
       );
   const years = config.years ?? config.generations * config.generation_years;
@@ -635,11 +635,11 @@ function syncPreview() {
     Number($("previewYear").value) > config.start_year + years
   )
     $("previewYear").value = config.start_year;
-  $("durationPreview").textContent = fmt(years) + " ans";
+  $("durationPreview").textContent = fmt(years) + " years";
   $("yearsPreview").textContent =
     config.start_year + " → " + (config.start_year + years);
   $("placesPreview").textContent =
-    fmt(config.settlements.length || config.virtual_settlements) + " lieux";
+    fmt(config.settlements.length || config.virtual_settlements) + " settlements";
   $("typesPreview").textContent =
     new Set(
       (config.settlements.length
@@ -650,17 +650,17 @@ function syncPreview() {
   $("populationPreview").textContent = fmt(config.initial_population);
   $("targetPreview").textContent = config.target_population
     ? (config.target_mode === "report"
-        ? "Fondateurs fixés · cible indicative "
-        : "Plafond · un seul calcul · ") + fmt(config.target_population)
-    : "Sans plafond · régulation inactive";
+        ? "Fixed founders · indicative target "
+        : "Ceiling · single simulation · ") + fmt(config.target_population)
+    : "No ceiling · regulation inactive";
   $("mapNotice").textContent = config.settlements.length
-    ? "Carte explicite : nombre virtuel et profils ignorés. Modifier la carte dans le JSON."
-    : "Carte virtuelle. Distances dans votre unité ; une génération est une durée.";
+    ? "Explicit map: virtual counts and profiles are ignored. Edit the map in JSON."
+    : "Virtual map. Distances use your units; a generation is a duration.";
   if (world)
     $("mapNotice").textContent +=
-      " Archive actuellement affichée : " +
+      " Currently displayed archive: " +
       world.settlements.length +
-      " lieux. Le résultat sera ouvert automatiquement si vous restez sur cette vue.";
+      " settlements. The result opens automatically if you stay on this view.";
   $("configJson").value = JSON.stringify(config, null, 2);
   $("configValidated").textContent = "";
   clearTimeout(previewTimer);
@@ -691,9 +691,9 @@ for (const [id, key] of Object.entries(basics)) {
       );
       for (const nation of removed) nation.capital = null;
       mapAdjustmentMessage = removed.length
-        ? "Carte redimensionnée : capitale automatique pour " +
+        ? "Resized map: automatic capital for " +
           removed.map((n) => n.name).join(", ") +
-          ". Le placement est déterministe avec la graine. Les capitales encore présentes sont conservées."
+          ". Placement is deterministic for this seed. Existing capitals are preserved."
         : "";
       renderProfiles();
     }
@@ -708,7 +708,7 @@ $("randomSeed").onclick = () => {
 };
 
 $("addRace").onclick = () => {
-  let name = "peuple_" + (config.races.length + 1);
+  let name = "ancestry_" + (config.races.length + 1);
   while (config.races.some((r) => r.name === name)) name += "_";
   config.races.push({ name, initial_weight: 1, demography: {}, metadata: {} });
   renderProfiles();
@@ -735,7 +735,7 @@ $("addPlace").onclick = () => {
 
 $("addEvent").onclick = () => {
   config.events.push({
-    name: "Nouvelle crise",
+    name: "New crisis",
     start_year: config.start_year + 10,
     end_year: config.start_year + 12,
     settlements: [],
@@ -759,7 +759,7 @@ $("applyJson").onclick = safely(async () => {
     scenario: JSON.parse($("configJson").value),
   });
   populate(validated.scenario);
-  $("configValidated").textContent = "Configuration valide ✓";
+  $("configValidated").textContent = "Valid configuration ✓";
 });
 
 $("exportButton").onclick = safely(async () => {
@@ -800,11 +800,11 @@ async function catalogue() {
       const option = el(
         "option",
         (a.id === "initial"
-          ? "Monde initial"
-          : "Graine " + a.seed + " / " + a.id.slice(-6)) +
+          ? "Initial world"
+          : "Seed " + a.seed + " / " + a.id.slice(-6)) +
           " · " +
           fmt(a.summary.population) +
-          " habitants · " +
+          " residents · " +
           a.summary.end_year,
       );
       option.value = a.id;
@@ -824,7 +824,7 @@ async function poll() {
     status = await api("job");
   } catch {
     $("progressText").textContent =
-      "Connexion interrompue · nouvelle tentative…";
+      "Connection interrupted · retrying…";
     pollTimer = setTimeout(() => safely(poll)(), 1500);
     return;
   }
@@ -835,16 +835,16 @@ async function poll() {
   $("progress").value = status.progress ?? 0;
   if (status.state === "running") {
     const phase = status.phase;
-    $("progressText").textContent = phase + " · année " + status.year;
+    $("progressText").textContent = phase + " · year " + status.year;
     $("progressCount").textContent =
       fmt(status.population) +
-      " habitants · " +
+      " residents · " +
       Math.round(status.progress * 100) +
       " %";
     pollTimer = setTimeout(() => safely(poll)(), 650);
   } else if (status.state === "complete") {
     $("progressText").textContent =
-      "Monde généré · " + fmt(status.summary.population) + " habitants";
+      "World generated · " + fmt(status.summary.population) + " residents";
     $("progressCount").textContent =
       Number(status.summary.total_seconds).toFixed(1) + " s";
     await catalogue();
@@ -864,9 +864,9 @@ async function poll() {
     )
       await open();
   } else if (status.state === "cancelled") {
-    $("progressText").textContent = "Calcul arrêté · aucune archive publiée";
+    $("progressText").textContent = "Simulation stopped · no archive published";
   } else if (status.state === "failed") {
-    $("progressText").textContent = "Génération interrompue";
+    $("progressText").textContent = "Generation interrupted";
     error(Error(status.error));
   }
 }
@@ -909,18 +909,18 @@ $("reuseConfig").onclick = safely(async () => {
 });
 
 const place = (id) => world.settlements.find((p) => p.id === id),
-  placeName = (id) => place(id)?.name ?? "Inconnu",
+  placeName = (id) => place(id)?.name ?? "Unknown",
   raceName = (id) => world.races.find((r) => r.id === id)?.name ?? String(id),
   activityName = (id) =>
     world.activities.find((a) => a.id === id)?.name ?? String(id);
 
 const kindLabels = {
-    metropolis: "Métropole",
-    city: "Ville",
-    town: "Bourg",
+    metropolis: "Metropolis",
+    city: "City",
+    town: "Town",
     village: "Village",
-    hamlet: "Hameau",
-    mining_village: "Village minier",
+    hamlet: "Hamlet",
+    mining_village: "Mining village",
     port: "Port",
   },
   kindColors = {
@@ -958,8 +958,8 @@ function personButton(p) {
     el("b", "#" + displayIdentity(p.id)),
   );
   if (p.race !== undefined) b.append(el("span", raceName(p.race), "raceBadge"));
-  b.append(el("span", personSource(p) === "core" ? "Non procédural" :
-    personSource(p) === "projected" ? "Procédural" : "Simulé", "sourceBadge"));
+  b.append(el("span", personSource(p) === "core" ? "Simulated" :
+    personSource(p) === "projected" ? "Procedural" : "Simulated", "sourceBadge"));
   if (p.birth !== undefined)
     b.append(
       el(
@@ -969,9 +969,9 @@ function personButton(p) {
       ),
     );
   b.title =
-    "Ouvrir l’individu #" +
+    "Open person #" +
     p.id +
-    (p.birth !== undefined ? " · né en " + p.birth : "");
+    (p.birth !== undefined ? " · born in " + p.birth : "");
   b.onclick = safely(async () => {
     tab("individual");
     await selectPerson(p.id);
@@ -1076,9 +1076,9 @@ async function refreshPreview() {
     }
     $("previewStatus").textContent =
       preview.settlements.length +
-      " lieux · graine " +
+      " settlements · seed " +
       preview.seed +
-      " · année " +
+      " · year " +
       preview.year +
       " · " +
       Object.entries(kinds)
@@ -1088,7 +1088,7 @@ async function refreshPreview() {
   } catch (e) {
     if (request !== previewEpoch) return;
     $("previewMap").getContext("2d").clearRect(0, 0, 400, 250);
-    $("previewStatus").textContent = "Aperçu invalide : " + e.message;
+    $("previewStatus").textContent = "Invalid preview: " + e.message;
   }
 }
 function mapAspect() {
@@ -1199,9 +1199,9 @@ $("map").onpointermove = (e) => {
         kindLabel(p.kind) +
         " · " +
         fmt(mapPopulation.get(p.id)) +
-        " habitants · ID " +
+        " residents · ID " +
         p.id
-      : "Survoler un lieu pour lire son effectif ; cliquer pour explorer.";
+      : "Hover over a settlement to inspect its population; click to explore.";
   }
 };
 $("map").onpointerup = safely(async (e) => {
@@ -1417,17 +1417,17 @@ async function drawMap() {
   }
   $("residence").textContent = person
     ? mapLocation === null
-      ? "Absent du recensement en " + y
-      : "Résidence en " + y + " : " + placeName(mapLocation)
+      ? "Not present in the census for " + y
+      : "Residence in " + y + " : " + placeName(mapLocation)
     : "";
   $("yearText").textContent = y;
   const h = world.history.find((h) => h.year === y);
   const historyToDate = world.history.filter((row) => row.year <= y);
   const metricValues = [
-    [h?.population, "Habitants vivants · " + y],
+    [h?.population, "Living residents · " + y],
     ...["births", "deaths", "marriages"].map((key, index) => [
       historyToDate.reduce((sum, row) => sum + row[key], 0),
-      ["Naissances", "Décès", "Unions"][index] + " · cumul",
+      ["Births", "Deaths", "Unions"][index] + " · total",
     ]),
   ];
   [...$("worldMetrics").children].forEach((card, index) => {
@@ -1436,15 +1436,15 @@ async function drawMap() {
   });
   $("yearStats").textContent =
     fmt(h?.population) +
-    " habitants dans le monde · " +
+    " residents worldwide · " +
     fmt(h?.births) +
-    " naissances · " +
+    " births · " +
     fmt(h?.deaths) +
-    " décès sur " +
+    " deaths over " +
     (h?.span || 1) +
-    " an(s)" +
+    " year(s)" +
     (race !== ""
-      ? " · carte filtrée : " +
+      ? " · filtered map : " +
         raceName(Number(race)) +
         " (" +
         fmt([...mapPopulation.values()].reduce((a, b) => a + b, 0)) +
@@ -1459,7 +1459,7 @@ async function drawMap() {
       placeName(chosenPlace) +
       " · " +
       fmt(mapPopulation.get(chosenPlace)) +
-      " habitants en " +
+      " residents in " +
       y;
 }
 $("mapLayer").onchange = paintMap;
@@ -1479,7 +1479,7 @@ function drawDistributions(value, y) {
     composition.append(
       el(
         "p",
-        "Agrégats indisponibles dans cette ancienne archive. Régénérez pour les obtenir.",
+        "Aggregates are unavailable in this older archive. Generate a new world to compute them.",
         "small",
       ),
     );
@@ -1519,7 +1519,7 @@ function drawDistributions(value, y) {
     },
     age,
   );
-  maleLabel.textContent = "Hommes";
+  maleLabel.textContent = "Men";
   const femaleLabel = svg(
     "text",
     {
@@ -1531,7 +1531,7 @@ function drawDistributions(value, y) {
     },
     age,
   );
-  femaleLabel.textContent = "Femmes";
+  femaleLabel.textContent = "Women";
   bands.forEach((band, i) => {
     const yy = 34 + i * 17,
       m = males.get(band) || 0,
@@ -1549,7 +1549,7 @@ function drawDistributions(value, y) {
         band * bandSize * 5 +
         "–" +
         (band * bandSize * 5 + bandSize * 5 - 1) +
-        " ans : " +
+        " years : " +
         fmt(n);
     }
     const label = svg(
@@ -1568,9 +1568,9 @@ function drawDistributions(value, y) {
   });
   for (const [kind, label, name] of [
     ["nation", "Nations", (i) => nationName(i - 1)],
-    ["race", "Peuples", raceName],
-    ["status", "Niveaux sociaux", (i) => "Niveau " + i],
-    ["activity", "Activités", activityName],
+    ["race", "Ancestries", raceName],
+    ["status", "Social ranks", (i) => "Rank " + i],
+    ["activity", "Activities", activityName],
   ]) {
     const section = el("div");
     section.append(el("h3", label));
@@ -1692,7 +1692,7 @@ function renderResidents() {
   for (let age = min; age <= max; age += tick) {
     const x = xAge(age);
     ctx.textAlign = "center";
-    ctx.fillText(age + " ans", x, 25);
+    ctx.fillText(age + " years", x, 25);
     ctx.strokeStyle = "#dce3d7";
     ctx.beginPath();
     ctx.moveTo(x, 40);
@@ -1716,7 +1716,7 @@ function renderResidents() {
       if (!selectedGroups.length) continue;
       ctx.fillStyle = sex ? "#a15c87" : "#42799b";
       ctx.font = "13px system-ui";
-      ctx.fillText(sex ? "♀ Femmes" : "♂ Hommes", 8, top + 35);
+      ctx.fillText(sex ? "♀ Women" : "♂ Men", 8, top + 35);
       if (individuals) {
         const buckets = new Map(),
           columnWidth = span / range,
@@ -1796,24 +1796,24 @@ function renderResidents() {
     ctx.fillStyle = "#73837d";
     ctx.textAlign = "left";
     ctx.font = "14px system-ui";
-    ctx.fillText("Aucun habitant dans cette sélection.", left, 100);
+    ctx.fillText("No residents match this selection.", left, 100);
   }
   canvas.dataset.matched = atlas.matched;
   canvas.dataset.mode = individuals ? "individuals" : "cohorts";
   canvas.dataset.points = atlasHits.length;
   $("residentCount").textContent =
     fmt(atlas.matched) +
-    " habitants / " +
+    " residents / " +
     fmt(atlas.total) +
-    " dans le lieu · " +
+    " in the settlement · " +
     (individuals
       ? atlas.sampled
         ? fmt(residentRows.length) +
-          " individus représentatifs · effectifs exacts"
-        : "un marqueur par individu"
-      : "cohortes exhaustives · taille = effectif") +
+          " representative people · exact counts"
+        : "one marker per person"
+      : "complete cohorts · size = population") +
     (atlasScope
-      ? " · sélection " + atlasScope.min_age + "–" + atlasScope.max_age + " ans"
+      ? " · selection " + atlasScope.min_age + "–" + atlasScope.max_age + " years"
       : "");
 }
 function atlasHit(e) {
@@ -1868,10 +1868,10 @@ $("residentCanvas").onpointermove = (e) => {
       p = hit.person || hit.group;
     t.textContent =
       (hit.person
-        ? "#" + displayIdentity(p.id) + " · " + hit.age + " ans · " + sourceLabel(p)
-        : fmt(p.count) + " habitants · " + p.age + "–" + p.max_age + " ans") +
+        ? "#" + displayIdentity(p.id) + " · " + hit.age + " years · " + sourceLabel(p)
+        : fmt(p.count) + " residents · " + p.age + "–" + p.max_age + " years") +
       " · " +
-      (p.sex ? "♀ Femmes" : "♂ Hommes") +
+      (p.sex ? "♀ Women" : "♂ Men") +
       " · " +
       raceName(p.race);
     const b = $("residentCanvas").getBoundingClientRect();
@@ -1880,8 +1880,8 @@ $("residentCanvas").onpointermove = (e) => {
     $("residentReadout").textContent =
       t.textContent +
       (hit.person
-        ? " · cliquer pour ouvrir la fiche"
-        : " · cliquer pour isoler cette cohorte");
+        ? " · click to open the person"
+        : " · click to isolate this cohort");
   }
 };
 $("residentCanvas").onpointerleave = () => ($("residentTooltip").hidden = true);
@@ -1965,7 +1965,7 @@ async function residents(id, append = false, preserve = false) {
   }))
     if (value !== "" && value !== null && value !== undefined)
       query.set(key, value);
-  $("residentCount").textContent = "Lecture de la population…";
+  $("residentCount").textContent = "Loading population…";
   const [result, history] = await Promise.all([
     api("resident-atlas?" + query),
     api("settlement-history?place=" + id),
@@ -1979,14 +1979,14 @@ async function residents(id, append = false, preserve = false) {
   $("placeTitle").textContent = placeName(id);
   $("placeDetail").textContent =
     kindLabel(place(id).kind) +
-    " · population au dernier recensement (" +
+    " · population at the final census (" +
     atlas.year +
     ")";
   $("globalSelection").textContent =
     placeName(id) +
     " · " +
     fmt(mapPopulation.get(id)) +
-    " habitants en " +
+    " residents in " +
     selectedYear();
   renderResidents();
 }
@@ -2025,64 +2025,64 @@ async function selectPerson(id, remember = true, cursor = null) {
     .style.setProperty("--race-color", raceColor(person.race));
   renderResidents();
   $("personTitle").textContent =
-    (person.name ?? "#" + displayIdentity(id)) + " · " + (person.sex ? "Femme" : "Homme");
+    (person.name ?? "#" + displayIdentity(id)) + " · " + (person.sex ? "Woman" : "Man");
   $("personSource").textContent = sourceLabel(person);
   $("personSource").dataset.source = personSource(person);
   $("personTag").textContent =
-    raceName(person.race) + " · lignée #" + displayIdentity(person.family) +
+    raceName(person.race) + " · lineage #" + displayIdentity(person.family) +
     (person.source === "core" ? " · " + roleLabel(person.importance.role) :
-      person.source === "projected" ? " · généalogie procédurale" : "");
+      person.source === "projected" ? " · procedural genealogy" : "");
   $("personFacts").replaceChildren(
     fact(
-      person.founder ? "Naissance estimée" : "Naissance",
+      person.founder ? "Estimated birth" : "Birth",
       person.birth + " · " + placeName(person.birth_place),
     ),
     fact(
-      "Décès",
+      "Deaths",
       person.death === null
-        ? "Vivant en " + world.summary.end_year
+        ? "Alive in " + world.summary.end_year
         : person.death + " · " + placeName(person.death_place),
     ),
-    fact("Activité", activityName(person.activity)),
-    fact("Niveau social", person.status),
+    fact("Activity", activityName(person.activity)),
+    fact("Social rank", person.status),
   );
   $("personFacts").append(
     fact(
-      "Projet parental",
+      "Parenthood preference",
       person.childfree === true
-        ? "Choix de ne pas avoir d’enfants · à vie"
+        ? "Lifelong choice not to have children"
         : person.childfree === false
-          ? "Peut souhaiter des enfants"
-          : "Non simulé dans ce monde",
+          ? "May want children"
+          : "Not simulated in this world",
     ),
     fact(
-      "Fertilité biologique",
+      "Biological fertility",
       person.infertile === true
-        ? "Infertile · état à vie"
+        ? "Infertile · lifelong state"
         : person.infertile === false
-          ? "Fertile selon le modèle"
-          : "Non simulée dans ce monde",
+          ? "Fertile under this model"
+          : "Not simulated in this world",
     ),
   );
   if (person.death !== null)
     $("personFacts").append(
-      fact("Âge au décès", person.death - person.birth + " ans"),
+      fact("Age at death", person.death - person.birth + " years"),
     );
   $("parents").replaceChildren(
     ...[person.father, person.mother].map((pid) =>
       pid === null
-        ? el("span", "Inconnu", "tag")
+        ? el("span", "Unknown", "tag")
         : personButton({ id: pid, sex: pid === person.father ? 0 : 1 }),
     ),
   );
   $("children").replaceChildren(...person.children.map(personButton));
   if (!person.children.length)
-    $("children").append(el("span", "Aucun enfant enregistré", "small"));
+    $("children").append(el("span", "No recorded children", "small"));
 
   const events = [
     {
       year: person.birth,
-      label: person.founder ? "Naissance estimée" : "Naissance",
+      label: person.founder ? "Estimated birth" : "Birth",
       place: person.birth_place,
     },
   ];
@@ -2091,35 +2091,35 @@ async function selectPerson(id, remember = true, cursor = null) {
       year: u.start,
       label:
         (u.start === world.summary.start_year
-          ? "Union observée avec #"
-          : "Union avec #") + displayIdentity(u.male === id ? u.female : u.male),
+          ? "Union observed with #"
+          : "Union with #") + displayIdentity(u.male === id ? u.female : u.male),
       place: u.place,
       person: u.male === id ? u.female : u.male,
     });
     if (u.end !== null)
       events.push({
         year: u.end,
-        label: u.reason === "divorce" ? "Divorce" : "Fin de l’union · décès",
+        label: u.reason === "divorce" ? "Divorce" : "Union ended · death",
         place: null,
       });
   }
   for (const m of person.migrations)
     events.push({
       year: m.year,
-      label: "Migration depuis " + placeName(m.origin),
+      label: "Migration from " + placeName(m.origin),
       place: m.destination,
     });
   for (const c of person.children)
     events.push({
       year: c.birth,
-      label: "Naissance de l’enfant #" + displayIdentity(c.id),
+      label: "Birth of child #" + displayIdentity(c.id),
       place: c.birth_place,
       person: c.id,
     });
   if (person.death !== null)
     events.push({
       year: person.death,
-      label: "Décès",
+      label: "Deaths",
       place: person.death_place,
     });
   events.sort((a, b) => a.year - b.year);
@@ -2287,7 +2287,7 @@ async function drawTree() {
   }
   $("depth").value = requestedDepth;
   $("treeNote").textContent =
-    `Chargement · ${requestedDepth} générations demandées…`;
+    `Loading · ${requestedDepth} generations requested…`;
   const result = await api(
     `lineage?id=${identity}&depth=${requestedDepth}&direction=${direction}`,
   );
@@ -2384,7 +2384,7 @@ async function drawTree() {
       { x: 12, y, fill: "#8b978d", "font-size": 10 },
       t,
     );
-    label.textContent = generation ? "G" + generation : "Individu choisi";
+    label.textContent = generation ? "G" + generation : "Selected person";
   }
   for (const p of all)
     for (const pid of [p.father, p.mother]) {
@@ -2418,7 +2418,7 @@ async function drawTree() {
           "data-sex": p.sex,
           tabindex: 0,
           role: "button",
-          "aria-label": `Individu ${p.id}, ${p.sex ? "femme" : "homme"}, ${raceName(p.race)}, né en ${p.birth}`,
+          "aria-label": `Person ${p.id}, ${p.sex ? "woman" : "man"}, ${raceName(p.race)}, born in ${p.birth}`,
         },
         t,
       );
@@ -2463,7 +2463,7 @@ async function drawTree() {
     date.textContent =
       p.birth +
       "–" +
-      (p.death ?? "vivant") +
+      (p.death ?? "alive") +
       " · " +
       raceName(p.race).slice(0, 15);
     const location = svg(
@@ -2471,16 +2471,16 @@ async function drawTree() {
       { x: -68, y: 22, fill: "#87948b", "font-size": 10 },
       g,
     );
-    location.textContent = personSource(p) === "core" ? "Non procédural · fiche simulée" :
-      personSource(p) === "projected" ? "Généalogie procédurale" : placeName(p.birth_place).slice(0, 25);
+    location.textContent = personSource(p) === "core" ? "Simulated person" :
+      personSource(p) === "projected" ? "Procedural genealogy" : placeName(p.birth_place).slice(0, 25);
     svg("title", {}, g).textContent =
       raceName(p.race) +
       " · " +
       placeName(p.birth_place) +
-      " · naissance " +
+      " · birth " +
       p.birth +
-      " · décès " +
-      (p.death ?? "inconnu / vivant");
+      " · deaths " +
+      (p.death ?? "unknown / alive");
     g.onkeydown = safely(async (e) => {
       if (["Enter", " "].includes(e.key)) {
         e.preventDefault();
@@ -2490,15 +2490,15 @@ async function drawTree() {
     });
   }
   $("treeNote").textContent =
-    `${maxGeneration} / ${requestedDepth} générations affichées · ` +
+    `${maxGeneration} / ${requestedDepth} generations shown · ` +
     fmt(all.length) +
-    " individus · glisser / molette · ♂ bleu / ♀ mauve · point = peuple" +
+    " people · drag / scroll · ♂ blue / ♀ purple · dot = ancestry" +
     (result.truncated
-      ? " · limite de 1 000 apparentés atteinte : dernière génération potentiellement incomplète"
+      ? " · 1,000-relative limit reached: last generation may be incomplete"
       : maxGeneration < requestedDepth
-        ? " · fin des liens connus dans cette direction"
+        ? " · end of known relationships in this direction"
         : "") +
-    " · parents des fondateurs inconnus";
+    " · founders’ parents are unknown";
   fitTree();
 }
 
@@ -2507,22 +2507,22 @@ function chart(local = false) {
   if (!local) {
     $("chartMode").disabled = city;
     $("chartTitle").textContent = city && chosenPlace !== null ?
-      "Évolution · " + placeName(chosenPlace) : "Évolution démographique · Monde";
-  } else $("localChartTitle").textContent = "Évolution · " + placeName(chosenPlace);
+      "History · " + placeName(chosenPlace) : "Population history · World";
+  } else $("localChartTitle").textContent = "History · " + placeName(chosenPlace);
   const mode = city ? "population" : $("chartMode").value,
     series =
       mode === "vital"
         ? [
-            ["births", "Naissances · moyenne/an", "#287366"],
-            ["deaths", "Décès · moyenne/an", "#b85353"],
+            ["births", "Births · annual average", "#287366"],
+            ["deaths", "Deaths · annual average", "#b85353"],
           ]
         : mode === "movement"
           ? [
-              ["divorces", "Divorces · moyenne/an", "#a76999"],
-              ["marriages", "Unions · moyenne/an", "#b7974f"],
-              ["migrations", "Déplacements · moyenne/an", "#6485b1"],
+              ["divorces", "Divorces · annual average", "#a76999"],
+              ["marriages", "Unions · annual average", "#b7974f"],
+              ["migrations", "Movements · annual average", "#6485b1"],
             ]
-          : [["population", "Habitants", "#287366"]],
+          : [["population", "Residents", "#287366"]],
     from = Number($("chartFrom").value || 0),
     to = Number($("chartTo").value || world.history.length - 1),
     history = (city ? cityHistory ?? [] : world.history).slice(Math.min(from, to), Math.max(from, to) + 1);
@@ -2530,7 +2530,7 @@ function chart(local = false) {
   if (!history.length) {
     $(prefix).replaceChildren();
     $(prefix + "Legend").replaceChildren();
-    $(prefix + "Readout").textContent = "Lecture des recensements du lieu…";
+    $(prefix + "Readout").textContent = "Loading settlement censuses…";
     if (!local) chart(true);
     return;
   }
@@ -2676,7 +2676,7 @@ function chart(local = false) {
     };
     hover.setAttribute("tabindex", "0");
     hover.setAttribute("role", "button");
-    hover.setAttribute("aria-label", readout + ", afficher sur la carte");
+    hover.setAttribute("aria-label", readout + ", show on map");
     hover.onfocus = hover.onpointerenter;
     hover.onkeydown = (e) => {
       if (["Enter", " "].includes(e.key)) {
@@ -2692,7 +2692,7 @@ function chart(local = false) {
   $(prefix + "Legend").replaceChildren();
   for (const [, label, color] of [
     ...series,
-    ["", "Crises configurées", "#cf7840"],
+    ["", "Configured crises", "#cf7840"],
   ]) {
     const span = el("span"),
       dot = el("i", "", "dot");
@@ -2700,8 +2700,8 @@ function chart(local = false) {
     span.append(dot, el("span", label));
     $(prefix + "Legend").append(span);
   }
-  $(prefix + "Readout").textContent = (city ? placeName(chosenPlace) : "Monde") +
-    " · " + firstYear + " → " + lastYear + " · " + fmt(history.at(-1).population) + " habitants";
+  $(prefix + "Readout").textContent = (city ? placeName(chosenPlace) : "World") +
+    " · " + firstYear + " → " + lastYear + " · " + fmt(history.at(-1).population) + " residents";
   if (!local) chart(true);
 }
 
@@ -2730,15 +2730,15 @@ async function loadWorld() {
   $("residentSource").value = "";
   renderMortalityStats(s);
   $("tabExplore").textContent =
-    "02 · Monde · " + world.settlements.length + " lieux";
+    "02 · World · " + world.settlements.length + " settlements";
   $("worldEyebrow").textContent =
-    "Graine " +
+    "Seed " +
     loadedConfig.seed +
     " / " +
     world.settlements.length +
-    " lieux / " +
+    " settlements / " +
     world.races.length +
-    " peuples";
+    " ancestries";
   $("worldSubtitle").textContent =
     s.start_year +
     " → " +
@@ -2746,15 +2746,15 @@ async function loadWorld() {
     " · " +
     fmt(s.people_ever) +
     (s.population_model === "hybrid"
-      ? " vies représentées · " + fmt(s.core_retained) + " fiches conservées · "
-      : " vies conservées · ") +
+      ? " represented lives · " + fmt(s.core_retained) + " stored records · "
+      : " stored lives · ") +
     (s.total_seconds ?? 0).toFixed(1) +
-    " secondes de génération";
+    " seconds to generate";
   $("worldMetrics").replaceChildren();
   for (const [value, label] of [
-    [s.population, "Habitants vivants"],
-    [s.births, "Naissances"],
-    [s.deaths, "Décès"],
+    [s.population, "Living residents"],
+    [s.births, "Births"],
+    [s.deaths, "Deaths"],
     [s.marriages, "Unions"],
   ]) {
     const card = el("div", "", "card");
@@ -2764,7 +2764,7 @@ async function loadWorld() {
   $("year").min = 0;
   $("year").max = world.history.length - 1;
   $("year").value = world.history.length - 1;
-  $("raceFilter").replaceChildren(el("option", "Tous les peuples"));
+  $("raceFilter").replaceChildren(el("option", "All ancestries"));
   $("raceFilter").firstChild.value = "";
   for (const r of world.races) {
     const o = el("option", r.name);
@@ -2818,42 +2818,42 @@ async function loadWorld() {
   if (epoch !== worldEpoch) return;
   $("diagnostics").textContent =
     (s.population_model === "hybrid"
-      ? "Hybride · " + fmt(s.core_retained) + " personnages conservés · "
+      ? "Hybrid · " + fmt(s.core_retained) + " stored characters · "
       : s.storage === "native-binary-memory-v1"
-      ? "Mémoire binaire · aucune écriture · "
+      ? "Binary memory · no data writes · "
       : "Archive ") +
     (s.archive_bytes / 1024 / 1024).toFixed(2) +
-    " Mio · " +
+    " MiB · " +
     fmt(s.migrations) +
-    " déplacements · " +
+    " movements · " +
     fmt(s.kinship_rejections) +
-    " unions écartées pour parenté · " +
+    " unions rejected for kinship · " +
     Object.entries(s.population_by_race)
       .map(([r, n]) => r + " : " + fmt(n))
       .join(" / ") +
     (s.target_population
-      ? " · cible " +
+      ? " · target " +
         fmt(s.target_population) +
-        " ; écart " +
+        " ; difference " +
         (s.target_relative_error * 100).toFixed(1) +
         " %"
       : "") +
     ".";
   if (s.regulation?.enabled) {
     $("diagnostics").textContent +=
-      " · Plancher " +
+      " · Floor " +
       fmt(s.regulation.floor) +
-      " / plafond " +
+      " / ceiling " +
       fmt(s.regulation.ceiling) +
       " · " +
       fmt(s.regulation.additional_births) +
-      " naissances supplémentaires" +
+      " additional births" +
       " · " +
       fmt(s.regulation.additional_deaths) +
-      " décès de régulation" +
+      " regulation deaths" +
       " · " +
       fmt(s.regulation.below_floor_years) +
-      " années sous le plancher";
+      " years below the floor";
   }
 }
 
@@ -2878,7 +2878,7 @@ $("year").oninput = () => {
 $("chartMode").onchange = $("chartScope").onchange = () => chart();
 $("chartFrom").onchange = $("chartTo").onchange = () => {
   $("chartReadout").textContent =
-    "Survoler un recensement · cliquer pour afficher sa carte.";
+    "Hover over a census · click to show its map.";
   chart();
 };
 $("resetChart").onclick = () => {
@@ -2961,7 +2961,7 @@ $("addNation").onclick = () => {
 };
 $("addContact").onclick = safely(() => {
   if (config.nations.length < 2)
-    throw Error("Créer deux nations avant un contact.");
+    throw Error("Create two nations before adding a contact.");
   config.nation_contacts.push({
     nations: config.nations.slice(0, 2).map((n) => n.name),
     start_year: config.start_year,
@@ -2977,7 +2977,7 @@ const nationColor = (i) =>
   i < 0 ? "#c6cebd" : `hsl(${(i * 137.508) % 360} 38% 74%)`;
 const nationName = (i) =>
   i < 0
-    ? "Territoire indépendant"
+    ? "Independent territory"
     : loadedConfig.nations[i]?.name || "Nation " + i;
 
 function renderMapLegend() {
@@ -2990,24 +2990,24 @@ function renderMapLegend() {
     ]);
   if (layer === "population")
     entries = [
-      ["#d5e6d9", "Faible effectif"],
-      ["#397c62", "Fort effectif · échelle logarithmique"],
+      ["#d5e6d9", "Low population"],
+      ["#397c62", "High population · logarithmic scale"],
     ];
   if (layer === "growth")
     entries = [
-      ["#bb6460", "Baisse depuis le début"],
-      ["#398c93", "Hausse depuis le début"],
+      ["#bb6460", "Decrease since the start"],
+      ["#398c93", "Increase since the start"],
     ];
   if (layer === "flows")
-    entries = [["#769a91", "150 principaux flux annuels · toutes ascendances"]];
+    entries = [["#769a91", "Top 150 annual flows · all ancestries"]];
   if (layer === "nations")
     entries = [...new Set(counts.map((r) => r.nation))].map((i) => [
       nationColor(i),
       nationName(i),
     ]);
   entries.push(
-    ["#cf7840", "Origines familiales"],
-    ["#287366", "Parcours individuel"],
+    ["#cf7840", "Family origins"],
+    ["#287366", "Personal journey"],
   );
   $("mapLegend").replaceChildren(
     ...entries.map(([color, label]) => {
@@ -3071,7 +3071,7 @@ function renderMortalityHint() {
     }
   }
   $("mortalityHint").textContent =
-    `Indication du modèle global : âge moyen au décès ${mean.toFixed(1)} ans · médiane ${median} ans · ${(childhood * 100).toFixed(1)} % meurent avant 15 ans. Calcul théorique avec mortalité par sexe, hors crises, maternité, régulation et variantes des peuples. L’âge maximal n’est pas l’espérance de vie. Les taux d’infertilité et de choix sans enfant sont des parts à vie, indépendantes, applicables aux deux partenaires.`;
+    `Global model estimate: mean age at death ${mean.toFixed(1)} years · median ${median} years · ${(childhood * 100).toFixed(1)}% die before age 15. Theoretical calculation with sex-specific mortality, excluding crises, maternity, regulation and ancestry variants. Maximum age is not life expectancy. Infertility and childfree rates are independent lifelong shares that apply to both partners.`;
 }
 function renderMortalityStats(summary) {
   const m = summary.mortality,
@@ -3080,37 +3080,37 @@ function renderMortalityStats(summary) {
   $("deathBands").replaceChildren();
   if (!m) {
     $("mortalityDetail").textContent =
-      "Ce monde antérieur ne contient pas ces statistiques. Relancez une génération pour les calculer.";
+      "This older world has no mortality statistics. Generate a new world to compute them.";
     return;
   }
   const percent = (n) => (n === null ? "—" : (n * 100).toFixed(1) + " %");
   for (const [label, value, hint] of [
     [
-      "Âge moyen au décès",
+      "Mean age at death",
       m.mean_age_at_death === null
         ? "—"
-        : m.mean_age_at_death.toFixed(1) + " ans",
-      "Décès observés, tous âges",
+        : m.mean_age_at_death.toFixed(1) + " years",
+      "Observed deaths, all ages",
     ],
     [
-      "Âge médian au décès",
+      "Median age at death",
       m.median_age_at_death === null
         ? "—"
-        : fmt(m.median_age_at_death) + " ans",
-      "La moitié des décès avant cet âge",
+        : fmt(m.median_age_at_death) + " years",
+      "Half of deaths occur before this age",
     ],
     [
-      "Décès avant 15 ans",
+      "Deaths before age 15",
       percent(m.deaths_under_15_fraction),
-      fmt(m.deaths_under_15) + " / " + fmt(m.observed_deaths) + " décès",
+      fmt(m.deaths_under_15) + " / " + fmt(m.observed_deaths) + " deaths",
     ],
     [
-      "Enfants morts avant 15 ans",
+      "Children who died before age 15",
       percent(m.completed_childhood_mortality),
       fmt(m.childhood_deaths_in_completed_cohort) +
         " / " +
         fmt(m.completed_childhood_cohort) +
-        " naissances suivies ≥ 15 ans",
+        " births followed for at least 15 years",
     ],
   ]) {
     const item = el("div");
@@ -3122,11 +3122,11 @@ function renderMortalityStats(summary) {
     metrics.append(item);
   }
   for (const [age, n] of Object.entries(m.death_age_bands)) {
-    const b = el("span", `${age} ans · ${fmt(n)} décès`, "tag");
+    const b = el("span", `${age} years · ${fmt(n)} deaths`, "tag");
     $("deathBands").append(b);
   }
   $("mortalityDetail").textContent =
-    `Survie infantile : fondateurs exclus (${fmt(m.excluded_founders)}), leur enfance antérieure est inconnue. ${fmt(m.unresolved_childhood_cohort)} naissances trop récentes pour un suivi de 15 ans sont aussi exclues du taux des enfants. Les âges au décès incluent les fondateurs ; il s’agit de décès observés, pas d’une espérance de vie estimée.`;
+    `Childhood survival: founders are excluded (${fmt(m.excluded_founders)}) because their earlier childhood is unknown. ${fmt(m.unresolved_childhood_cohort)} births too recent for 15 years of follow-up are also excluded from the childhood rate. Ages at death include founders; these are observed deaths, not estimated life expectancy.`;
 }
 
 new ResizeObserver(() => {

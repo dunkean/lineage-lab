@@ -326,9 +326,9 @@ class Engine:
 
     def related(self, first, second):
         self.kin_checks += 1
-        answer = bool(self.ancestors(first) & self.ancestors(second))
-        self.kin_rejections += answer
-        return answer
+        yearswer = bool(self.ancestors(first) & self.ancestors(second))
+        self.kin_rejections += yearswer
+        return yearswer
 
     def _move(self, ids, destination, reason):
         ids = np.asarray(ids, dtype=np.int32)

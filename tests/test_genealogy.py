@@ -8,9 +8,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from cousinade.config import Scenario, load_scenario, virtual_map
-from cousinade.engine import Engine, generate, scaled_probability
-from cousinade.store import Archive
+from lineage_lab.config import Scenario, load_scenario, virtual_map
+from lineage_lab.engine import Engine, generate, scaled_probability
+from lineage_lab.store import Archive
 
 
 def scenario(**changes):
@@ -517,8 +517,8 @@ def test_negative_calendar_deaths_round_trip(tmp_path):
 
 
 def test_mortality_table_no_nan_for_long_lived_species():
-    from cousinade.config import Demography
-    from cousinade.engine import mortality_table
+    from lineage_lab.config import Demography
+    from lineage_lab.engine import mortality_table
 
     table = mortality_table(Demography(max_age=2000, aging_exponent=5, aging_coefficient=0))
     assert np.isfinite(table).all()
@@ -594,7 +594,7 @@ def test_http_explorer_endpoints_are_read_only_and_bounded(tmp_path):
     from urllib.error import HTTPError
     from urllib.request import urlopen
 
-    from cousinade.server import make_handler
+    from lineage_lab.server import make_handler
 
     path = tmp_path / "http.sqlite"
     summary = generate(scenario(initial_population=80, years=5), path)

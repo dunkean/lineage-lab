@@ -28,7 +28,7 @@ const assert = require("node:assert/strict");
       year: 1001,
       population: 50,
       progress: 0.01,
-      phase: "Simulation annuelle · régulation dynamique",
+      phase: "Annual simulation · dynamic regulation",
     };
     return fulfill(route, status);
   });
@@ -61,29 +61,29 @@ const assert = require("node:assert/strict");
   await page.waitForFunction(() =>
     document
       .querySelector("#progressText")
-      .textContent.includes("Simulation annuelle"),
+      .textContent.includes("Annual simulation"),
   );
   assert.equal(requests, 1);
   status = {
     ...status,
     year: 1002,
     progress: 0.08,
-    phase: "Simulation annuelle · régulation dynamique",
+    phase: "Annual simulation · dynamic regulation",
   };
   await page.evaluate(() => poll());
   assert.ok(
-    (await page.locator("#progressText").textContent()).includes("année 1002"),
+    (await page.locator("#progressText").textContent()).includes("year 1002"),
   );
   assert.equal(await page.locator("#progress").evaluate((e) => e.value), 0.08);
   status = {
     ...status,
     year: 1003,
     progress: 0.12,
-    phase: "Simulation annuelle · régulation dynamique",
+    phase: "Annual simulation · dynamic regulation",
   };
   await page.evaluate(() => poll());
   assert.ok(
-    (await page.locator("#progressText").textContent()).includes("année 1003"),
+    (await page.locator("#progressText").textContent()).includes("year 1003"),
   );
   assert.equal(requests, 1);
   assert.deepEqual(errors, []);

@@ -29,14 +29,14 @@ const fs = require("node:fs");
       { timeout: 60000 });
     await page.waitForFunction(() =>
       document.querySelector("#configView").hidden &&
-      document.querySelector("#diagnostics").textContent.includes("Hybride"));
+      document.querySelector("#diagnostics").textContent.includes("Hybrid"));
     await page.click("#tabIndividual");
     const identity = await page.locator("#identity").inputValue();
     assert.match(identity, /^h:[a-f0-9]{64}:\d+:\d+$/);
     await page.fill("#identity", identity);
     await page.locator("#search button.primary").click();
     await page.selectOption("#direction", "descendants");
-    await page.waitForFunction(() => !document.querySelector("#treeNote").textContent.includes("Chargement"));
+    await page.waitForFunction(() => !document.querySelector("#treeNote").textContent.includes("Loading"));
     assert.equal(await page.locator("#error").isVisible(), false);
     await page.screenshot({ path: "output/genealogy/screenshots/hybrid-individual.png", fullPage: true });
     // Ordinary people expose only two ancestor and five descendant generations.
@@ -55,7 +55,7 @@ const fs = require("node:fs");
     await page.waitForFunction(() => document.querySelector("#depth").dataset.maxDepth === "2");
     assert.ok(Number(await page.locator("#depth").inputValue()) <= 2);
     await page.selectOption("#depth", "1");
-    await page.waitForFunction(() => !document.querySelector("#treeNote").textContent.includes("Chargement"));
+    await page.waitForFunction(() => !document.querySelector("#treeNote").textContent.includes("Loading"));
     assert.equal(await page.locator("#error").isVisible(), false);
     await page.screenshot({ path: "output/genealogy/screenshots/hybrid-family.png", fullPage: true });
     // Switch back to the historical mode through the same form.

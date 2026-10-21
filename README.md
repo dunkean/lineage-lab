@@ -1,60 +1,69 @@
-# Cousinade
+# Lineage Lab
 
-Tout le monde est un peu cousin. Petit labo provisoire de populations et de lignées pour mondes imaginaires.
+A small, standalone sandbox for population histories and genealogies. Configure a world, run generations, then explore settlements, life events and family trees.
 
-![Démo locale](docs/images/demo.png)
+![Local demo](docs/images/demo.png)
 
+Python, NumPy and Numba. No LLM, account, API key, map engine or sibling repository is required.
 
-Projet autonome : Python, NumPy et Numba. Aucun LLM, compte, clé API, autre dépôt ou générateur de cartes nécessaire.
+## Run the demo
 
-## Démo locale
-
-Python 3.12 (version validée). Sous Windows : double-cliquer sur `demo.cmd` ; le premier lancement crée `.venv` et installe le projet. Ouvrir **http://127.0.0.1:8772** et garder le terminal ouvert.
+Python **3.12** is the validated version. On Windows, double-click **`demo.cmd`**, then open **http://127.0.0.1:8772**. The first launch creates a private virtual environment and installs the pinned dependencies. Keep the terminal open.
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.lock
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\python.exe -m cousinade studio --port 8772
+.venv\Scripts\python.exe -m lineage_lab studio --port 8772
 ```
 
-Sous Linux/macOS, remplacer `.venv\Scripts\python.exe` par `.venv/bin/python`.
-La première compilation Numba peut prendre quelques secondes. La démo démarre avec 2 000 personnes, 36 lieux et 60 années. Générer un monde, explorer la carte puis cliquer sur une personne et sa famille. Les préréglages médiéval, fantasy, civilisation et hybride sont inclus dans le paquet, même installé hors de ce dossier.
+On Linux/macOS, use `.venv/bin/python`. The installed command is `lineage-lab`.
 
-Le studio garde ses mondes en RAM ; fermer le serveur les libère. Importer/exporter une configuration permet de rejouer un monde. Pour **sauvegarder les histoires**, demander explicitement une archive :
+The first Numba compilation can take a few seconds. The default demo starts with 2,000 founders, 36 settlements and 60 simulated years. Generate a world, explore its map, then open a person and their family. Medieval, fantasy, civilization and hybrid presets are bundled, including in an installed wheel.
+
+## Save or replay a world
+
+The studio keeps worlds in RAM; closing the server releases them. Export a configuration and its seed to replay a run. To persist the actual histories, explicitly request an archive:
 
 ```powershell
-.venv\Scripts\python.exe -m cousinade generate config/genealogy/fantasy.yaml --output output/fantasy.sqlite
-.venv\Scripts\python.exe -m cousinade explore output/fantasy.sqlite --port 8772
+.venv\Scripts\python.exe -m lineage_lab generate config/genealogy/fantasy.yaml --output output/fantasy.sqlite
+.venv\Scripts\python.exe -m lineage_lab explore output/fantasy.sqlite --port 8772
 ```
 
-## Deux modèles, deux contrats
+Existing archives are never overwritten.
 
-- `full` (défaut) : personnes, filiations et événements réellement simulés. Les ascendants antérieurs aux fondateurs sont inconnus. Tous les historiques conservés ont un coût mémoire.
-- `hybrid` : noyau simulé et fond par cohortes ; familles ordinaires procédurales consultables à la demande. Approximations explicites, dont deux générations ascendantes et cinq descendantes pour le fond. Ce n'est pas la généalogie exhaustive du mode `full`.
+## Two population models
 
-Les règles sont des paramètres de fiction, pas une calibration historique. Les performances de 50 millions d'habitants sur mille ans ne sont pas démontrées. Les noms affichés sont provisoires ; ce projet ne dépend pas de Nomnom.
+| Model | Contract | Main limit |
+| --- | --- | --- |
+| `full` (default) | Every person and their family events are simulated and recorded | Historical records, including the dead, consume memory |
+| `hybrid` | A simulated core plus a cohort background with deterministic families on demand | Background families use explicit approximations and limited exploration depth |
 
-## Vérifier
+For a complete genealogy of every resident, use `full`. Hybrid background exploration is limited to **two ancestor generations and five descendant generations**. It does not reproduce an equivalent full simulation. Both modes stop at founders whose earlier parents are unknown.
+
+Rules are worldbuilding parameters, not a historically calibrated demographic model. Fifty million residents across a thousand years is not a demonstrated full-mode performance claim. Display names are placeholders; the project does not depend on Namebench. Scenario proper names can retain their original spelling.
+
+## Check the project
 
 ```powershell
 .venv\Scripts\python.exe -m pytest
 .venv\Scripts\python.exe -m ruff check src tests
 npm ci
-# Avec le studio lancé sur 8772 ; Edge est le navigateur par défaut sous Windows.
+# Start the studio on 8772 first. Edge is the default browser on Windows.
 npm run test:browser
 $env:STUDIO_URL="http://127.0.0.1:8772"
 npm run test:hybrid
 ```
 
-`STUDIO_BROWSER` permet de choisir un exécutable Chromium/Edge. Les captures et calculs de tests vont dans `output/`, ignoré par Git.
+`STUDIO_BROWSER` selects a Chromium/Edge executable. Screenshots and test outputs go to ignored `output/`.
 
-## Repères
+## Documentation
 
-- [Guide d'utilisation](docs/genealogy.md)
-- [Contrat du mode hybride](docs/genealogy-hybrid.md)
-- [Architecture illustrée](docs/genealogy-architecture.html)
-- [Mesures et limites historiques](docs/genealogy_review.md) : résultats de l'ancien environnement, pas des garanties de ce dépôt.
-- [Origine de l'extraction](PROVENANCE.md)
+- [User guide](docs/genealogy.md)
+- [Hybrid model contract](docs/genealogy-hybrid.md)
+- [Architecture](docs/genealogy-architecture.html)
+- [Design notes](docs/genealogy-hybrid-design.md)
+- [Historical measurements](docs/genealogy_review.md)
+- [Validation](docs/validation.md) and [provenance](PROVENANCE.md)
 
-Le code est dans `src/cousinade/`, les scénarios exemples dans `config/genealogy/`, les tests dans `tests/`. Les actifs du studio et scénarios sont également embarqués dans le paquet installable.
+Source: `src/lineage_lab/`. Example scenarios: `config/genealogy/`. Tests: `tests/`. Presets and browser assets are packaged with the application.

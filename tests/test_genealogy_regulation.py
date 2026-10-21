@@ -3,10 +3,10 @@
 import numpy as np
 import pytest
 
-from cousinade.config import Scenario
-from cousinade.engine import Engine, generate
-from cousinade.regulation import PopulationRegulator
-from cousinade.schema import NO_YEAR
+from lineage_lab.config import Scenario
+from lineage_lab.engine import Engine, generate
+from lineage_lab.regulation import PopulationRegulator
+from lineage_lab.schema import NO_YEAR
 
 
 def test_ceiling_is_hard_and_crisis_recovers_through_real_births():
@@ -66,7 +66,7 @@ def test_no_pilots_or_founder_changes_even_for_legacy_configs(monkeypatch):
         calls.append(args[0].initial_population)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr("cousinade.engine.Engine", counted)
+    monkeypatch.setattr("lineage_lab.engine.Engine", counted)
 
     def forbidden(*args):
         raise AssertionError("Calibration callbacks must never run")

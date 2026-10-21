@@ -8,11 +8,11 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from cousinade.config import Scenario
-from cousinade.engine import generate
-from cousinade.server import make_handler
-from cousinade.store import Archive
-from cousinade.studio import BusyError, Studio
+from lineage_lab.config import Scenario
+from lineage_lab.engine import generate
+from lineage_lab.server import make_handler
+from lineage_lab.store import Archive
+from lineage_lab.studio import BusyError, Studio
 
 
 @pytest.fixture
@@ -57,7 +57,7 @@ def test_job_busy_failure_and_retry(studio, monkeypatch):
         args[1].with_suffix(".sqlite.partial").write_text("interrupted")
         raise RuntimeError("Simulation failure")
 
-    monkeypatch.setattr("cousinade.studio.generate", fail)
+    monkeypatch.setattr("lineage_lab.studio.generate", fail)
     payload = {"scenario": {"initial_population": 30, "years": 2}}
     studio.start(payload)
     assert entered.wait(timeout=5)
@@ -105,7 +105,7 @@ def test_target_regulation_uses_one_run(studio):
 
 
 def test_single_run_progress_never_restarts(studio, monkeypatch):
-    from cousinade.engine import generate as real_generate
+    from lineage_lab.engine import generate as real_generate
 
     observations, calls = [], []
 
@@ -118,7 +118,7 @@ def test_single_run_progress_never_restarts(studio, monkeypatch):
 
         return real_generate(config, path, observed)
 
-    monkeypatch.setattr("cousinade.studio.generate", controlled)
+    monkeypatch.setattr("lineage_lab.studio.generate", controlled)
     studio.start(
         {
             "scenario": {
@@ -192,7 +192,7 @@ def test_studio_http_validation_generation_assets_and_origin(studio):
 
 
 def test_cancelled_job_does_not_publish_archive_and_can_retry(studio, monkeypatch):
-    from cousinade.engine import generate as real_generate
+    from lineage_lab.engine import generate as real_generate
 
     entered, release = threading.Event(), threading.Event()
 
@@ -201,7 +201,7 @@ def test_cancelled_job_does_not_publish_archive_and_can_retry(studio, monkeypatc
         assert release.wait(timeout=5)
         progress(config.start_year + 1, config.initial_population)
 
-    monkeypatch.setattr("cousinade.studio.generate", paused)
+    monkeypatch.setattr("lineage_lab.studio.generate", paused)
     studio.start({"scenario": {"initial_population": 30, "years": 2}})
     assert entered.wait(timeout=5)
     studio.cancel()
@@ -210,7 +210,7 @@ def test_cancelled_job_does_not_publish_archive_and_can_retry(studio, monkeypatc
     assert studio.status()["state"] == "cancelled"
     assert len(studio.catalogue()["archives"]) == 1
     assert not list(studio.output_dir.glob("*.partial"))
-    monkeypatch.setattr("cousinade.studio.generate", real_generate)
+    monkeypatch.setattr("lineage_lab.studio.generate", real_generate)
     studio.start({"scenario": {"initial_population": 30, "years": 2}})
     studio.worker.join(timeout=10)
     assert studio.status()["state"] == "complete"
