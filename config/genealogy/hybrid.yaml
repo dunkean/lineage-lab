@@ -1,0 +1,20 @@
+schema_version: 2
+population_model: hybrid
+seed: 42
+start_year: 1000
+initial_population: 2000
+years: 75
+virtual_settlements: 16
+snapshot_interval: 5
+hybrid:
+  core_target_share: 0.05
+  core_max_share: 0.10
+  core_historical_max_share: 0.10
+  core_status_weights: [0.12, 0.18, 0.60, 0.10]
+  projection_cache_mebibytes: 64
+  promotion_rules:
+    - {role: noble_house, priority: 100}
+    - {role: bourgeois_lineage, priority: 80}
+    - {role: local_notable, priority: 70}
+    - {role: innkeeper, per_settlement: 1, priority: 60}
+    - {role: common_hero, per_world: 4, priority: 90}

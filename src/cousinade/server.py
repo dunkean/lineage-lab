@@ -1,0 +1,205 @@
+"""Loopback studio: asynchronous generation and bounded read-only archive views."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+import yaml
+
+from .archive_protocol import open_archive
+from .config import virtual_map
+from .politics import PoliticalTimeline
+from .store import Archive
+from .studio import BusyError, Studio
+
+
+def make_handler(archive: Archive, studio: Studio | None = None):
+    studio = studio or Studio(archive)
+
+    class Handler(BaseHTTPRequestHandler):
+        def reply(self, value, status=200):
+            body = json.dumps(value, ensure_ascii=False).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_POST(self):
+            # Browser writes must originate on this local server, with JSON content.
+            origin = self.headers.get("Origin")
+            allowed = {
+                f"127.0.0.1:{self.server.server_port}",
+                f"localhost:{self.server.server_port}",
+            }
+            host = self.headers.get("Host")
+            if host not in allowed or origin and origin != f"http://{host}":
+                self.reply({"error": "Origine refusée"}, 403)
+                return
+            if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+                self.reply({"error": "Envoyer une configuration JSON"}, 415)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 1_000_000:
+                    raise ValueError("Configuration vide ou supérieure à 1 Mo")
+                payload = json.loads(self.rfile.read(length))
+                route = urlsplit(self.path).path
+                if route == "/api/generate":
+                    self.reply(studio.start(payload), 202)
+                elif route == "/api/cancel":
+                    self.reply(studio.cancel())
+                elif route == "/api/validate":
+                    self.reply({"scenario": studio.validate(payload).model_dump(mode="json")})
+                elif route == "/api/preview":
+                    scenario = studio.validate(payload)
+                    places = virtual_map(scenario)
+                    year = int(payload.get("year", scenario.start_year))
+                    if not scenario.start_year <= year <= scenario.start_year + scenario.duration:
+                        raise ValueError("Preview year outside simulation dates")
+                    owners, _, _ = PoliticalTimeline(scenario, places).at(year)
+                    self.reply(
+                        {
+                            "settlements": [
+                                {**p.model_dump(mode="json"), "nation": int(owners[i])}
+                                for i, p in enumerate(places)
+                            ],
+                            "nations": [n.name for n in scenario.nations],
+                            "year": year,
+                            "population": scenario.initial_population,
+                            "seed": scenario.seed,
+                        }
+                    )
+                elif route == "/api/select":
+                    self.reply(studio.select(payload["id"]))
+                else:
+                    self.reply({"error": "Route inconnue"}, 404)
+            except BusyError as exc:
+                self.reply({"error": str(exc)}, 409)
+            except (ValueError, KeyError, TypeError, yaml.YAMLError) as exc:
+                self.reply({"error": str(exc)}, 400)
+
+        def do_GET(self):
+            path = urlsplit(self.path)
+            query = parse_qs(path.query)
+
+            def integer(key, default=0):
+                return int(query.get(key, [default])[0])
+
+            try:
+                archive_id, archive = studio.snapshot(query.get("archive", [None])[0])
+
+                def identity(key="id", default=None):
+                    value = query.get(key, [default])[0]
+                    if getattr(archive, "identity_kind", "numeric") == "opaque":
+                        return value
+                    return int(value)
+
+                if path.path in ("/", "/studio.css", "/studio.js", "/d3-delaunay.min.js"):
+                    asset, mime = {
+                        "/": ("explorer.html", "text/html; charset=utf-8"),
+                        "/studio.css": ("studio.css", "text/css; charset=utf-8"),
+                        "/studio.js": ("studio.js", "application/javascript; charset=utf-8"),
+                        "/d3-delaunay.min.js": (
+                            "vendor/d3-delaunay.min.js",
+                            "application/javascript; charset=utf-8",
+                        ),
+                    }[path.path]
+                    body = (Path(__file__).parent / asset).read_bytes()
+                else:
+                    if path.path == "/api/presets":
+                        value = studio.presets()
+                    elif path.path == "/api/job":
+                        value = studio.status()
+                    elif path.path == "/api/archives":
+                        value = studio.catalogue()
+                    elif path.path == "/api/world":
+                        value = {
+                            "archive": archive_id,
+                            "overview": archive.overview(),
+                            "config": studio.config(archive),
+                        }
+                    elif path.path == "/api/config":
+                        value = studio.config(archive)
+                    elif path.path == "/api/overview":
+                        value = archive.overview()
+                    elif path.path == "/api/person":
+                        value = archive.person(identity())
+                    elif path.path == "/api/core":
+                        value = (
+                            archive.important_people(
+                                integer("limit", 100), query.get("role", [None])[0]
+                            )
+                            if hasattr(archive, "important_people")
+                            else []
+                        )
+                    elif path.path == "/api/lineage":
+                        value = archive.lineage(
+                            identity(),
+                            integer("depth", 4),
+                            query.get("direction", ["ancestors"])[0],
+                        )
+                    elif path.path == "/api/resident-atlas":
+                        source = query.get("source", [None])[0]
+                        if source and getattr(archive, "population_model", "full") != "hybrid":
+                            raise ValueError("Source filters require a hybrid world")
+                        value = archive.resident_atlas(
+                            integer("place"),
+                            min_age=integer("min_age", 0),
+                            max_age=integer("max_age", 2000),
+                            race=integer("race") if "race" in query else None,
+                            sex=integer("sex") if "sex" in query else None,
+                            limit=integer("limit", 1200),
+                            **({"source": source} if source else {}),
+                        )
+                    elif path.path == "/api/settlement-history":
+                        value = archive.settlement_history(integer("place"))
+                    elif path.path == "/api/residents":
+                        value = archive.residents(
+                            integer("place"), integer("limit", 100), identity("after", "-1")
+                        )
+                    elif path.path == "/api/map":
+                        value = archive.map_at(
+                            integer("year"), integer("race") if "race" in query else None
+                        )
+                    elif path.path == "/api/distributions":
+                        value = archive.distributions(integer("year"))
+                    elif path.path == "/api/residence":
+                        value = archive.residence(identity(), integer("year"))
+                    else:
+                        self.send_error(404)
+                        return
+                    body, mime = json.dumps(value, ensure_ascii=False).encode(), "application/json"
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(body)
+            except KeyError:
+                self.send_error(404, "Unknown individual")
+            except (ValueError, OverflowError) as exc:
+                self.send_error(400, str(exc))
+            except sqlite3.Error:
+                self.send_error(500, "Archive query failed")
+
+        def log_message(self, *args):
+            pass
+
+    return Handler
+
+
+def serve(path: Path, port=8765):
+    archive = open_archive(path) if isinstance(path, Path) else path
+    with ThreadingHTTPServer(("127.0.0.1", port), make_handler(archive)) as server:
+        print(f"Explorer: http://127.0.0.1:{server.server_port} (Ctrl+C to stop)", flush=True)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass

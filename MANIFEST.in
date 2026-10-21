@@ -1,0 +1,6 @@
+include README.md PROVENANCE.md AGENTS.md demo.cmd requirements.lock
+include package.json package-lock.json
+recursive-include config *.yaml
+recursive-include docs *.md *.html
+recursive-include tests *.py *.cjs
+recursive-include docs *.png

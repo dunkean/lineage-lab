@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.nbc
+*.nbi
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+output/
+tmp/
+node_modules/
+.env
+.env.*

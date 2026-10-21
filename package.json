@@ -1,0 +1,11 @@
+{
+  "name": "cousinade-browser-checks",
+  "private": true,
+  "scripts": {
+    "test:browser": "node tests/browser/genealogy_studio.cjs",
+    "test:hybrid": "node tests/browser/genealogy_hybrid.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}
