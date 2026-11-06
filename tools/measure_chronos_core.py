@@ -221,7 +221,7 @@ def enrich_core_exposure(path):
                     if case == "large_no_shock":
                         plan["shocks"] = []
                         plan["limits"].update(
-                            core_target_share_bps=1000,
+                            core_target_share_bps=500,
                             max_core_living=2000,
                             max_core_historical=20000,
                         )
@@ -283,7 +283,7 @@ def audit(output_path=None, seeds=SEEDS, cases=("example", "large_no_shock")):
                 if case == "large_no_shock":
                     plan["shocks"] = []
                     plan["limits"].update(
-                        core_target_share_bps=1000, max_core_living=2000, max_core_historical=20000
+                        core_target_share_bps=500, max_core_living=2000, max_core_historical=20000
                     )
                     for site in plan["settlements"]:
                         site["initial_population"] *= 10

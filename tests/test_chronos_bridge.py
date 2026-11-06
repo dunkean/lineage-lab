@@ -277,7 +277,7 @@ def read_result(worker, response):
 def test_bundled_contract_bytes_are_pinned():
     expected = {
         "population-plan.schema.json": "f9b297f147fa9ba2b164da3f98a411b955c81ab533df467ed26060695579dd10",
-        "village-population-plan.example.json": "7b23621e54e3831650721244b3ac7d1c4edf9529df9c6eb5e1d01653bad70db3",
+        "village-population-plan.example.json": "81bc0ac73f8a8221362a3d2d3136a271b8206fd179cde837e9f4e5b2a8a43434",
         "requirements.lock": "87274b79ba36271b52388f9acbe4dbe7eeabed43dd87e85f998372bbd2d22223",
     }
     for name, digest in expected.items():

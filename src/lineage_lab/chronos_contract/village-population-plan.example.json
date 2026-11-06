@@ -87,7 +87,7 @@
           "male_birth_probability_bps": 5120,
           "female_infertility_rate_bps": 600,
           "male_infertility_rate_bps": 400,
-          "fertility_peak_bps": 3200,
+          "fertility_peak_bps": 4000,
           "fertility_peak_age": 27,
           "fertility_width_years": 10,
           "fertility_min_age": 18,
