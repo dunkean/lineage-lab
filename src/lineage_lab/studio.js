@@ -1997,6 +1997,39 @@ function fact(label, value) {
   return f;
 }
 
+function renderPersona(persona) {
+  const body = persona.physical;
+  const scores = (group) =>
+    Object.entries(group).map(([name, score]) =>
+      fact(name[0].toUpperCase() + name.slice(1), score.label),
+    );
+  $("personaSummary").textContent = persona.summary;
+  $("personaSource").textContent =
+    {
+      approximated: "Approximated from parents and grandparents",
+      founder: "Drawn from their race as a founder",
+      inherited: "Inherited from recorded parents",
+    }[persona.source] +
+    ` · described at age ${persona.age} in ${persona.reference_year}`;
+  $("personaFacts").replaceChildren(
+    fact("Height", `${body.height_cm} cm · ${body.height}`),
+    fact("Weight", `${body.weight_kg} kg · ${body.build}`),
+    fact(
+      "Hair",
+      `${body.hair_color} · ${body.hair_texture}` +
+        (body.hair_loss === "none" ? "" : ` · ${body.hair_loss}`),
+    ),
+    fact("Eyes and skin", `${body.eye_color} · ${body.skin_tone}`),
+    fact("Face", `${body.nose} nose · ${body.mouth} mouth · ${body.jaw} jaw`),
+    ...scores(persona.cognitive),
+    ...scores(persona.temperament),
+    ...scores(persona.health),
+    fact("Type reading", persona.readings.type16),
+    fact("Classical temperament", persona.readings.classical_temperament),
+    fact("Traits", persona.readings.adjectives.join(", ") || "Unremarkable"),
+  );
+}
+
 let personTrail = [],
   personCursor = -1;
 $("personBack").onclick = safely(() =>
@@ -2068,6 +2101,7 @@ async function selectPerson(id, remember = true, cursor = null) {
     $("personFacts").append(
       fact("Age at death", person.death - person.birth + " years"),
     );
+  renderPersona(person.persona);
   $("parents").replaceChildren(
     ...[person.father, person.mother].map((pid) =>
       pid === null

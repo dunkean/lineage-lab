@@ -18,6 +18,7 @@ import numpy as np
 from .cohorts import Cohorts
 from .config import Scenario, Settlement
 from .memory import MemoryArchive
+from .persona import PersonaModel
 from .politics import PoliticalTimeline
 from .projection import PROJECTION_VERSION, canonical, unpack_arrays
 
@@ -52,6 +53,7 @@ class HybridArchive:
             self.config, self.settlements, payload["records"], payload["factors"]
         )
         self.final_counts = unpack_arrays(payload["final_counts"])["counts"]
+        self.persona = PersonaModel(self.config)
         self.core = native_core
         if self.core is None and payload["core_config"] is not None:
             local = Scenario.model_validate(payload["core_config"])
@@ -225,6 +227,13 @@ class HybridArchive:
         activity = max(sorted(place.activities), key=lambda k: place.activities[k])
         return self.activities.index(activity)
 
+    def projected_values(self, reference, race):
+        return self.persona.projected_values(
+            reference,
+            lambda node: self.background.parents(node[0] - 1, node[1]),
+            race,
+        )
+
     def _raw(self, segment, person):
         return self.core._person(person) if segment == 0 else self._ordinary(segment, person)
 
@@ -245,6 +254,15 @@ class HybridArchive:
                 raw = self.core.person(person)
             else:
                 raw = self._ordinary(segment, person)
+                raw["persona"] = self.persona.describe(
+                    self.projected_values((segment, person), raw["race"]),
+                    raw["sex"],
+                    raw["race"],
+                    raw["birth"],
+                    self.summary["end_year"] if raw["death"] is None else raw["death"],
+                    raw["status"],
+                    "approximated",
+                )
                 raw["children"] = [self._raw(*ref) for ref in self._children(segment, person)]
                 raw["unions"], raw["migrations"] = [], []
                 _sex, rank = self.background.sex_rank(segment - 1, person)

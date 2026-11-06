@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .inspection import resident_atlas
+from .persona import PersonaReader
 from .politics import PoliticalTimeline
 from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
@@ -69,6 +70,9 @@ class MemoryArchive:
         self.created = time.time()
         self.config, self.settlements, self.activities = config, settlements, activities
         self.reproductive_traits = ReproductiveTraits(config)
+        self.persona = PersonaReader(
+            config, lambda: (self.data["father"], self.data["mother"], self.data["race"])
+        )
         self.start_year = config.start_year
         self.politics = PoliticalTimeline(config, settlements)
         self.saved_years, self.has_distributions = set(), True
@@ -238,6 +242,7 @@ class MemoryArchive:
         result["founder"] = result["father"] is None and result["mother"] is None
         result["history_known_from"] = self.start_year if result["founder"] else result["birth"]
         result["annotations"] = self.annotation_values.get(identity, {})
+        result["persona"] = self.persona.describe(result, self.summary["end_year"])
         children = self._children(identity)
         children = children[np.argsort(self.data["birth"][children], kind="stable")][:200]
         result["children"] = [self._person(int(pid)) for pid in children]

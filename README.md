@@ -41,6 +41,8 @@ Existing archives are never overwritten.
 
 For a complete genealogy of every resident, use `full`. Hybrid background exploration is limited to **two ancestor generations and five descendant generations**. It does not reproduce an equivalent full simulation. Both modes stop at founders whose earlier parents are unknown.
 
+Every person has a descriptive persona: physical appearance, aptitudes, OCEAN temperament and health, inherited from their parents with individual chance. Personas never affect a simulated history. See the [user guide](docs/genealogy.md#personas).
+
 Rules are worldbuilding parameters, not a historically calibrated demographic model. Fifty million residents across a thousand years is not a demonstrated full-mode performance claim. Display names are placeholders; the project does not depend on Namebench. Scenario proper names can retain their original spelling.
 
 ## Check the project

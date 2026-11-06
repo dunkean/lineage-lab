@@ -95,3 +95,45 @@ Full-mode Python rule extensions are available in `rules.py`. The hybrid model d
 Run `python -m pytest`, `python -m ruff check src tests`, then the documented browser checks. Tests cover seeded histories, kinship, archive parity, regulation, reproduction, politics, spatial counts, cancellation, world selection and both population models.
 
 Full mode retains historical people, including the dead. A complete 50-million-person world across 1,000 years remains a target rather than a verified capability. Settings are fiction parameters rather than a historically validated population model. See [historical measurements](genealogy_review.md).
+
+## Personas
+
+Every person returned by `/api/person`, the `person` command and the studio has a `persona`. It is descriptive: it never influences births, deaths, unions, status or migration, so a seeded history is identical with or without it. It is recomputed on demand from recorded parents and is not stored in archives, which also makes it available in existing archives.
+
+Each trait is one standardized value. A founder draws it from their race. A child takes `heritability × midparent deviation` plus individual chance, so two tall parents mostly have tall children, closer to the average than they are.
+
+| Group | Traits | Heritability |
+| --- | --- | ---: |
+| Physical | `height` | 0.8 |
+| Physical | `build` | 0.5 |
+| Physical | `skin_pigment`, `hair_pigment`, `eye_pigment` | 0.85 |
+| Physical | `hair_red`, `hair_curl` | 0.8 |
+| Physical | `hair_loss` | 0.7 |
+| Physical | `nose`, `mouth`, `jaw` | 0.65 |
+| Cognitive | `intelligence` | 0.6 |
+| Cognitive | `memory`, `verbal`, `spatial` | 0.5 |
+| Temperament | `openness`, `conscientiousness`, `extraversion`, `agreeableness`, `neuroticism` | 0.45 |
+| Health | `robustness` | 0.35 |
+
+These figures are worldbuilding assumptions of a plausible magnitude, not a calibrated genetic model. Recessive surprises are not modeled.
+
+Sex, age and social rank change only the body reading: height, weight, grey hair and hair loss. Rank adds a small nutrition effect to height. A persona describes a person at death, or at the end of the simulation if they are alive.
+
+Readings are derived and never stored:
+
+- `adjectives`, such as curious, jovial, brave or cowardly, come from weighted traits.
+- `type16` is a four-letter type reading: E/I from extraversion, N/S from openness, F/T from agreeableness and J/P from conscientiousness. It has no neuroticism axis and loses detail near the middle of each scale.
+- `classical_temperament` crosses extraversion and neuroticism into sanguine, choleric, melancholic or phlegmatic.
+
+By default, aptitudes and temperament do not vary by sex, race or ancestry. A fictional race can explicitly shift any trait in its metadata, in standard deviations:
+
+```yaml
+races:
+  - name: dwarf
+    metadata:
+      persona: {height: {mean: -5}, build: {mean: 1.5}}
+```
+
+Unknown traits and non-positive `sd` values are rejected. A child regresses towards the mean of their own race, starting from the midparent value, so mixed parentage shows in the child. Scenario settings live in race metadata and change a hybrid world's identity like any other configuration change.
+
+The studio derives every recorded person once, on the first persona request, and keeps about 84 bytes per person in memory. Projected hybrid people are approximated; see the [hybrid contract](genealogy-hybrid.md#approximations).

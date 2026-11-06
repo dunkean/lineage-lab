@@ -13,6 +13,7 @@ import numpy as np
 
 from .config import Scenario, Settlement
 from .inspection import resident_atlas
+from .persona import PersonaReader
 from .politics import PoliticalTimeline
 from .reproduction import ReproductiveTraits
 from .schema import STORED_FIELDS, null_sentinel
@@ -184,6 +185,7 @@ class Archive:
                 db.execute("SELECT value FROM metadata WHERE key='config'").fetchone()[0]
             )
             self.config = Scenario.model_validate(source)
+            self.persona = PersonaReader(self.config, self._persona_columns)
             self.reproductive_traits = (
                 ReproductiveTraits(self.config)
                 if json.loads(
@@ -208,6 +210,13 @@ class Archive:
         db.row_factory = sqlite3.Row
         return db
 
+    def _persona_columns(self):
+        with closing(self.connect()) as db:
+            rows = db.execute(
+                "SELECT coalesce(father,-1),coalesce(mother,-1),race FROM people ORDER BY id"
+            ).fetchall()
+        return np.array([tuple(row) for row in rows], np.int32).reshape(-1, 3).T
+
     def overview(self):
         with closing(self.connect()) as db:
             return {
@@ -230,6 +239,8 @@ class Archive:
                 result.update(self.reproductive_traits.describe(result))
             result["founder"] = row["father"] is None and row["mother"] is None
             result["history_known_from"] = self.start_year if result["founder"] else row["birth"]
+            summary = db.execute("SELECT value FROM metadata WHERE key='summary'").fetchone()[0]
+            result["persona"] = self.persona.describe(result, json.loads(summary)["end_year"])
             result["annotations"] = {
                 r["key"]: json.loads(r["value"])
                 for r in db.execute(

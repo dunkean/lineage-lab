@@ -11,6 +11,8 @@ from typing import Annotated, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
+from .persona import validate_race_persona
+
 Probability = Annotated[float, Field(ge=0, le=1, allow_inf_nan=False)]
 Positive = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Nonnegative = Annotated[float, Field(ge=0, allow_inf_nan=False)]
@@ -541,6 +543,7 @@ class Scenario(Settings):
             )
             demographic_bases.append(base)
         for race in self.races:
+            validate_race_persona(race.name, race.metadata.get("persona"))
             for base in demographic_bases:
                 Demography.model_validate(
                     {**base.model_dump(), **race.demography.model_dump(exclude_none=True)}

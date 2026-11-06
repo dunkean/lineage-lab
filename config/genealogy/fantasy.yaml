@@ -50,6 +50,8 @@ races:
     initial_weight: 75
   - name: elf
     initial_weight: 12
+    metadata:
+      persona: {height: {mean: 1.5}, build: {mean: -1}}
     marriage_min_age: 60
     marriage_max_age: 350
     dependent_age: 40
@@ -71,6 +73,8 @@ races:
       maternal_mortality: 0.002
   - name: dwarf
     initial_weight: 13
+    metadata:
+      persona: {height: {mean: -5}, build: {mean: 1.5}}
     marriage_min_age: 35
     marriage_max_age: 140
     dependent_age: 30
@@ -91,6 +95,8 @@ races:
       birth_spacing: 4
   - name: half_elf
     initial_weight: 0
+    metadata:
+      persona: {height: {mean: 0.7}, build: {mean: -0.5}}
     marriage_min_age: 25
     marriage_max_age: 90
     dependent_age: 20

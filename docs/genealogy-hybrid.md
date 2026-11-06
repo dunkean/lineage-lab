@@ -53,6 +53,8 @@ Background couples share settlement, ancestry and birth year. They have at most 
 
 Cohorts account for age rates, sex-specific and maternal mortality, fertility, periods, targeted crises, divorce and population regulation. They omit individual migrations, cross-ancestry offspring, social transitions and the full engine's detailed cousin checks. Core and background do not exchange partners. Custom Python rules are not supported.
 
+Personas of projected people are also approximated. Their values combine bounded hashes of the person, parents and grandparents instead of a recorded inheritance chain. Parent/child resemblance matches the configured heritability, but siblings are too similar and grandparents too distant. Personas report `source: approximated`; core personas report `source: inherited`, or `source: founder` without recorded parents. See [the user guide](genealogy.md#personas).
+
 Hybrid results can therefore differ from full mode at the same seed. Hybrid is not an exact compressed replay of every full-mode life.
 
 ## Historical timing sample
