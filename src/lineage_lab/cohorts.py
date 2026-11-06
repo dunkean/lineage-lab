@@ -214,6 +214,8 @@ class Cohorts:
         share /= self.config.initial_population
         places = [p.id for p in self.settlements]
         capacity = self.program.factors(year, places)[4]
+        society = self.policy(year)[1]
+        capacity *= (1 + society.capacity_growth) ** (year - self.start)
         capacities = np.array([p.capacity for p in self.settlements]) * share * capacity
         pressure = np.minimum(1, capacities / np.maximum(1, by_place))
         factors = self.factors[year - self.start]

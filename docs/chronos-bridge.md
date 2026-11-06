@@ -10,6 +10,9 @@ python -m lineage_lab.chronos_bridge --job-root output/chronos-jobs
 
 `--runtime` reports the runtime manifest and its fingerprint. Normal operation
 reads one JSON object per stdin line and writes one response per stdout line.
+Both streams explicitly use strict UTF-8, independent of the Windows locale
+and `PYTHONIOENCODING`; the subprocess regression sends `é` in the plan and
+`東京` in the request ID under a forced cp1252 environment.
 Provider output goes to stderr. The host supplies a private job root. Each
 successful materialization gets a separate directory beneath it. No Chronos
 repository imports, network requests, or extra Python dependencies are needed.
@@ -35,7 +38,9 @@ job root, and `result_ref {relative_path, file_sha256, bytes, format}` relative 
 that job directory. Resolve both beneath the host-owned root, reject escapes,
 and verify size and SHA-256 before reading. The worker chooses the filename;
 requests cannot supply result paths. Publication uses a flushed staging file
-and atomic replacement. Failed jobs do not publish a canonical result.
+and atomic replacement. Failed publications remove the staging file and their
+private directory. Engine exceptions during `materialize` are provider failures
+(`ProviderUnavailable`), not plan-validation failures.
 Durations appear only in the envelope's `metrics`.
 
 The artifact uses **`chronos-lineage-partial-json-1`**, with
@@ -46,7 +51,9 @@ It includes:
 
 - Provider/runtime manifests and the complete applied configuration.
 - Annual post-transition counts for each site, with disjoint simulated and
-  projected counts, births, deaths and realized net internal migration.
+  projected counts, births and deaths. Site migration is deferred until an
+  independently recorded movement register exists in step 2; no residual is
+  presented as a measured flow. The domain birth/death balance is tested.
 - Initial shock delta, annual core budgets, selected attempt and diagnostics
   listing every deferred operation and port.
 
@@ -85,7 +92,11 @@ compose in source-event UTF-8 order, followed by independent additional survival
 The `apply_initial_program` guard runs once per constructed component before
 its first census. Cohort reconstruction reads the same initial delta and saved
 annual capacity pressures. It cannot derive pressure from a queried subset.
-Explicit episode capacities replace automatic standalone capacity growth.
+Explicit episode capacities are multiplied by
+`(1 + society.capacity_growth) ** (year - start_year)`, with the standalone
+semantics on both components. Only the standalone target and initial floor are
+disabled. Integrated founder and share thresholds use integer multiplication
+and division by 10,000, including the zero-share fallback's applied limits.
 
 Choices where the design leaves a stage-1 detail open:
 
@@ -97,8 +108,12 @@ Choices where the design leaves a stage-1 detail open:
   afterward. Maximum lifespan remains a hard bound.
 - Founders are pre-shock survivors. Bootstrap applies additional mortality and
   the excess mortality hazard `max(0, factor - 1)`, without an extra ordinary
-  annual mortality pass or bootstrap births. Nonmortality initial effects remain
-  active context; they do not invent an initial birth transition.
+  annual mortality pass or bootstrap births. For a shock confined to `start_year`,
+  fertility/capacity/migration multipliers and mortality multipliers below one
+  have no annual transition on which to act. Nonneutral effects are listed with
+  source event, sites, integer input values and reason in
+  `diagnostics.initial_delta.effects_without_consequence`. Longer episodes can
+  affect subsequent simulated years.
 - Attempt seed `i` is the first eight SHA-256 bytes, little endian, of canonical
   `["chronos-lineage-core-attempt-1", seed_decimal_string, i]`. The selected
   scenario uses that seed; the standalone provider's core substream derivation
@@ -109,18 +124,125 @@ Choices where the design leaves a stage-1 detail open:
 exception advances this policy. Slot/cohort/result-byte/memory failures and
 unsupported biology do not activate it. An extinct compliant core is accepted.
 `required_core` allows the declared attempt count, at most eight, with no
-zero-share fallback. Selection happens before publication.
+zero-share fallback. An empty or extinct core in this policy raises
+`PopulationConstraintsUnsatisfied` before publication; an empty founder count
+is not advertised as `target_core`. Free empty variants declare `projected_only`
+and explicitly exclude simulated and long hereditary lineages in `lineage_scope`.
+This scope is bounded by provider coverage and the declared projection depths.
 
 Step 2 must implement the residence and household registries, founder guardian
 assignments using the **inline** foster limit, household movements, statistical
 ports, per-site residual regulation and full bounded candidate/kinship export.
 In this artifact the baseline remains unmodified input, all target correction is
-disabled, role demands are validated planning inputs only, and deferred movement
+disabled, ordinary role demands are validated planning inputs only, and deferred movement
 and port IDs are explicitly reported. Background residence remains its origin
 site for this step. Only `historical_soft_v1` is advertised as executed; accepting
 ordinary S3 planning fields does not claim their deferred capabilities. Valid
 S6 conditional/exact fields, S7 bridges, S8 dynamic settlements/procedural modes,
-and unsupported reproduction are rejected with `UnsupportedCapability`.
+unsupported reproduction and `role_demands[].policy="required"` are rejected
+with `UnsupportedCapability`.
+
+The former `test_marker_does_not_anticipate_shock` did not exercise a marker
+consumer: `HistoricalProgram.baseline` has none in step 1. That acceptance test
+is explicitly deferred to step 2 with the site regulator. The narrower
+`test_future_shock_does_not_change_realized_past` checks the actual materialize
+path before a future shock. Other regression checks read actual core deaths,
+use partial bootstrap mortality with factors below and above one, exercise
+the real annual share ceiling, and replay two capacity episodes by cohort in
+reverse query order.
+
+## Core audit, correction pass 1 (2026-11-06)
+
+Reproduce with the pinned interpreter and `PYTHONPATH=src`:
+
+```powershell
+$env:NUMBA_CACHE_DIR = '.numba-cache'
+& D:/workspace/self/chronos/.venv/Scripts/python.exe tools/measure_chronos_core.py
+```
+
+The registered seeds are **1 through 20, 42, 11040611567489494868** (22 total).
+The last is the example's population seed, distinct from its world seed 42.
+Each run covers 1300–1399. The example keeps the supplied shock and budgets;
+the large case multiplies initial populations and capacities by ten, removes
+shocks, sets target/max core shares to 1,000 bps, and declares absolute budgets
+2,000 living / 20,000 historical core people. No other demographic parameters
+are changed. This is a fixed diagnostic sample, not a calibration or a bound
+on extinction probability.
+
+Measurements were taken before the behavioral corrections and repeated after
+them. The original published example is reproduced: **55 → 6** simulated;
+1,045 → 1,627 projected before the capacity-growth correction, 1,628 afterward.
+The direct engine large case with the original population seed reproduces
+**1,100 → 510 simulated; 9,900 → 15,183 projected**. Calling the worker uses
+the indexed attempt seed instead: this same large plan selects attempt 0 and
+ends at 766 / 15,262. Direct and worker paths must not be conflated.
+
+Across the 22 actual worker selections, extinction (at least one census with
+zero living core, conditional on nonempty founders) is **0/22 in each case**;
+projected-only fallbacks are **0/22**. All 22 small-case first attempts succeed.
+The large case rejects **1/23 attempted core variants (4.35%)**: seed 17,
+attempt 0, year 1301, annual relative share ceiling; attempt 1 succeeds. Thus
+1/22 jobs needs a retry, and 0/22 jobs ultimately fails. These counts are the
+same before and after the corrections. No extinction observed over this horizon
+means neither survival indefinitely nor a healthy replacement rate.
+
+Post-correction trajectories below are means of the selected variants; core
+ranges show the full seed sample. Counts are disjoint simulated/projected
+people, not interchangeable estimates of one population.
+
+| Year | Example core mean [min, max] | Example projected mean | Large core mean [min, max] | Large projected mean |
+|---|---:|---:|---:|---:|
+| 1300 | 55.00 [55, 55] | 1,045.00 | 1,100.00 [1100, 1100] | 9,900.00 |
+| 1325 | 44.36 [29, 58] | 1,166.55 | 1,012.32 [940, 1069] | 10,849.91 |
+| 1350 | 33.23 [15, 55] | 1,383.77 | 898.36 [819, 992] | 12,176.82 |
+| 1375 | 19.45 [5, 37] | 1,364.95 | 776.05 [670, 873] | 13,711.27 |
+| 1399 | 12.23 [1, 24] | 1,612.09 | 673.27 [560, 790] | 15,212.09 |
+
+The original population seed on the worker path follows:
+
+| Year | Example simulated / projected | Large simulated / projected |
+|---|---:|---:|
+| 1300 | 55 / 1045 | 1100 / 9900 |
+| 1325 | 49 / 1169 | 1067 / 10843 |
+| 1350 | 35 / 1403 | 992 / 12177 |
+| 1375 | 23 / 1399 | 873 / 13748 |
+| 1399 | 6 / 1628 | 766 / 15262 |
+
+The divergence has an established fertility mechanism, independent of shocks,
+capacity and the small population's matching noise. `Engine._births` and
+`kernels.fertile_ids` enforce a delay after a **successful** birth. In contrast,
+`Cohorts.bounds` rotates approximately `1 / spacing` of paired ordinals each
+year and multiplies their probability by `spacing`. A failed birth opportunity
+still waits for the next rotation, while the probability compensation largely
+removes the aggregate spacing penalty. With a constant annual probability p
+and spacing s, the core's stationary rate is `p / (1 + (s - 1) * p)`; the
+projection's is `min(p, 1 / s)` before other factors. For p=0.32, s=2, these
+are approximately 0.2424 and 0.32 births per pair-year.
+
+The audit includes a controlled probe through both actual birth methods:
+2,000 pairs held at age 27 for 200 transitions, with no deaths, infertility,
+childfree choice, separation, capacity pressure or newborns entering the parent
+pool. It produces **97,017 core births versus 128,000 projected births**
+(0.2425425 versus 0.32 per pair-year). This identifies a systematic projection
+approximation defect in **`cohorts.py:Cohorts.bounds`**, not a second shock
+application or an extinction-budget defect. The probe does not attribute every
+person in the century-long discrepancy to spacing alone.
+
+Other model differences remain explicit. Real core unions can be absent or
+closed, matching uses age gaps/status/kinship, and both partners' reproduction
+flags must allow births. Cohorts approximate unions using paired counts and
+use rounded cohort-level trait exclusions, which differ from individual flags.
+The original example has only **332 partnered fertile woman-years out of 717**,
+and 48 births versus 97 deaths. Matching scarcity and demographic randomness
+therefore amplify its decline; they are not explained by its plague alone.
+
+No fertility, pairing, mortality or budget tuning is included in this pass.
+Repairing the projection's birth-spacing semantics requires a separate,
+versioned decision about allocation/reconstruction and the stage-2 union
+registry; silently changing it would also break preserved standalone hybrid
+histories. The requested capacity-growth correction is implemented independently.
+
+## Initial delivery validation (before correction pass 1)
 
 Validation measured on 2026-11-06: installed wheel, run from outside the checkout,
 using the prescribed Chronos Python 3.13.9 environment, Windows 11, Intel Core
@@ -140,3 +262,36 @@ The wheel was built with the already installed system setuptools, then installed
 with `--no-deps --no-compile --target` inside the worktree and exercised from
 `C:/Windows` with the prescribed interpreter. The Chronos environment was not
 modified.
+
+## Correction pass 1 verification
+
+The new regressions were run against the uncorrected implementation first:
+growth was identical with or without `capacity_growth_ppm`, bootstrap diagnostics
+were missing, required roles and empty required cores were accepted, the empty
+variant claimed `target_core`, materialize exceptions were misclassified,
+the integer founder boundary returned 28 instead of 29, non-ASCII subprocess
+round-trips failed, and a publication failure left an empty job directory.
+The removed migration-residual assertion also failed its replacement contract.
+
+With the prescribed Python 3.13.9 interpreter and commands, the final full suite
+reports **184 passed, 1 failed in 122.52 s**. The failure is
+`test_cancelled_job_does_not_publish_archive_and_can_retry`: after its 10-second
+join, the asynchronous job still reports `running`. That test passes alone
+(1 passed in 5.86 s), and its entire existing studio module passes alone
+(7 passed in 26.31 s). Its full-suite timing failure remains unresolved; it is
+not counted as a successful check. An additional bridge/studio diagnostic run
+with `faulthandler_timeout=8` aborted with a Windows access violation while
+dumping thread stacks; it supplies no reliable causal diagnosis of the timeout.
+The final bridge plus standalone golden subset passes **77/77 in 9.72 s**.
+`ruff check src tests`, a separate lint of the audit script, and
+`git diff --check` pass. Seeded standalone full/hybrid golden histories remain
+unchanged. No packaging or dependency changes were made in this pass.
+
+The corrected checkout's full example was also measured in a fresh process on
+the Intel Core i9-12900K / Windows 11 machine, generic CPU target, one compute
+thread: **6.807521 s cold**, using an empty dedicated Numba cache, then
+**0.299386 s warm** in the same worker. Both canonical artifacts were identical,
+53,738 bytes (SHA-256
+`1d896cf6626f042343aa3a42a83d9f267188a970c38a3baec8b6dd862dd7caff`).
+These times exclude worker startup and prepare, and include simulation,
+serialization and atomic publication; they cover the partial stage-1 artifact.

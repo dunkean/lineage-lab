@@ -404,6 +404,12 @@ def validate_plan(plan, runtime):
         k for s in sites.values() for e in s["occupation_episodes"] for k in e["activity_weights"]
     }
     for role in plan["role_demands"]:
+        if role["policy"] == "required":
+            invalid(
+                "Required roles need S6 conditional lineages",
+                role["slot_id"],
+                "UnsupportedCapability",
+            )
         span(role["valid"])
         if (
             role["site_id"] not in sites

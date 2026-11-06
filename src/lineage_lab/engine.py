@@ -822,8 +822,7 @@ class Engine:
         _, _, factor, _, capacity_factor = self._events(fertile, "births")
         counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
         capacity = np.array([p.capacity for p in self.settlements], dtype=float)
-        if not self.program:
-            capacity *= (1 + self.society.capacity_growth) ** (self.year - self.config.start_year)
+        capacity *= (1 + self.society.capacity_growth) ** (self.year - self.config.start_year)
         capacity *= capacity_factor
         pressure = np.minimum(1, capacity / np.maximum(counts, 1))
         local_pressure = pressure[d["place_slot"][fertile]]

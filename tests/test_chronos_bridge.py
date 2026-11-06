@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -84,6 +85,169 @@ def example(runtime, *, small=True):
 def seal(plan):
     plan["plan_fingerprint"] = plan_fingerprint(plan)
     return plan
+
+
+def society_parameters(plan, **parameters):
+    society = plan["resolved_profiles"]["society"]
+    society["parameters"].update(parameters)
+    society["id"] = plan["demography_society_id"] = "society/" + fingerprint(
+        {
+            k: society[k]
+            for k in ("schema_id", "parameters", "status_weights", "core_status_weights")
+        }
+    )
+    return seal(plan)
+
+
+@pytest.mark.parametrize("component", ["simulated", "projected"])
+@pytest.mark.parametrize("change", ["growth", "second_episode"])
+def test_integrated_capacity_growth_is_applied(worker, component, change):
+    from lineage_lab.hybrid_engine import HybridEngine
+
+    plan = example(worker.runtime_id, small=False)
+    plan["shocks"] = []
+    for site in plan["settlements"]:
+        site["occupation_episodes"][0]["capacity"] = 20
+    stagnant = HybridEngine(translate_plan(society_parameters(plan, capacity_growth_ppm=0))).run()
+    if change == "growth":
+        society_parameters(plan, capacity_growth_ppm=1000000)
+    else:
+        for site in plan["settlements"]:
+            first = site["occupation_episodes"][0]
+            second = copy.deepcopy(first)
+            first["valid"]["end_year"] = 1310
+            second["valid"]["start_year"] = 1310
+            second["capacity"] = 2000
+            site["occupation_episodes"].append(second)
+    growing = HybridEngine(translate_plan(seal(plan))).run()
+    if change == "second_episode":
+        assert [r for r in growing._payload["integrated_censuses"] if r["year"] < 1310] == [
+            r for r in stagnant._payload["integrated_censuses"] if r["year"] < 1310
+        ]
+    assert sum(r[component] for r in growing._payload["integrated_censuses"]) > sum(
+        r[component] for r in stagnant._payload["integrated_censuses"]
+    )
+
+
+def test_initial_only_effects_without_consequence_are_reported(worker):
+    plan = example(worker.runtime_id)
+    effects = {
+        "fertility_multiplier_ppm": 700000,
+        "capacity_multiplier_ppm": 400000,
+        "mortality_multiplier_ppm": 500000,
+    }
+    plan["shocks"][0].update(valid={"start_year": 1300, "end_year": 1301}, effects=effects)
+    result = partial_result(seal(plan), translate_plan(plan))
+    ignored = result["diagnostics"]["initial_delta"]["effects_without_consequence"]
+    assert ignored == [
+        {
+            "source_event_id": plan["shocks"][0]["source_event_id"],
+            "site_ids": plan["shocks"][0]["site_ids"],
+            "effects": effects,
+            "reason": "initial_only; no_annual_transition",
+        }
+    ]
+    plan["shocks"] = []
+    without = partial_result(seal(plan), translate_plan(plan))
+    assert result["annual_censuses"] == without["annual_censuses"]
+
+
+def test_required_role_is_unsupported(worker):
+    plan = example(worker.runtime_id)
+    plan["role_demands"][0]["policy"] = "required"
+    response = request(worker, "prepare", plan=seal(plan))
+    assert response["error"]["code"] == "UnsupportedCapability"
+
+
+@pytest.mark.parametrize("share, populations", [(0, (240, 120)), (500, (1, 1))])
+def test_required_core_cannot_publish_without_founders(worker, share, populations):
+    plan = example(worker.runtime_id)
+    plan["core_policy"] = "required_core"
+    plan["limits"].update(core_target_share_bps=share, max_attempts=1)
+    for site, population in zip(plan["settlements"], populations, strict=True):
+        site["initial_population"] = population
+    assert request(worker, "prepare", plan=seal(plan))["ok"]
+    response = request(
+        worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
+    )
+    assert response["error"]["code"] == "PopulationConstraintsUnsatisfied"
+
+
+def test_free_empty_core_manifest_describes_actual_variant(worker):
+    plan = example(worker.runtime_id)
+    plan["limits"]["core_target_share_bps"] = 0
+    result = partial_result(seal(plan), translate_plan(plan))
+    assert result["provider_manifest"]["core_selection"]["variant"] == "projected_only"
+    assert result["diagnostics"]["lineage_scope"] == (
+        "projected_only; no_simulated_lineages; background_parentage_is_projected; "
+        "bounded_by_provider_coverage_and_projection_depth; no_long_hereditary_lineages"
+    )
+
+
+def test_required_extinct_core_cannot_publish(worker):
+    plan = example(worker.runtime_id)
+    plan["core_policy"] = "required_core"
+    plan["shocks"][0].update(
+        valid={"start_year": 1300, "end_year": 1301},
+        effects={"additional_mortality_bps": 10000},
+        site_ids=[s["site_id"] for s in plan["settlements"]],
+    )
+    assert request(worker, "prepare", plan=seal(plan))["ok"]
+    response = request(
+        worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
+    )
+    assert response["error"]["code"] == "PopulationConstraintsUnsatisfied"
+    assert response["error"]["constraint"] == "required_core"
+    assert response["error"]["year"] == 1300
+
+
+@pytest.mark.parametrize("failure", [ValueError, TypeError, KeyError])
+def test_engine_failure_is_not_a_population_constraint(worker, monkeypatch, failure):
+    import lineage_lab.chronos_bridge as bridge
+
+    plan = example(worker.runtime_id)
+    assert request(worker, "prepare", plan=plan)["ok"]
+
+    def fail(*args):
+        raise failure("engine bug")
+
+    monkeypatch.setattr(bridge, "partial_result", fail)
+    response = request(
+        worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
+    )
+    assert response["error"]["code"] == "ProviderUnavailable"
+
+
+def test_core_founder_threshold_uses_integer_basis_points(worker):
+    from lineage_lab.hybrid_engine import HybridEngine
+
+    plan = example(worker.runtime_id)
+    for site, population in zip(plan["settlements"], (267, 133), strict=True):
+        site["initial_population"] = population
+    plan["limits"].update(core_target_share_bps=725, core_max_share_bps=725)
+    config = translate_plan(plan).model_copy(update={"years": 0})
+    archive = HybridEngine(config).run()
+    assert archive.summary["core_founders_simulated"] == 29
+
+
+def test_worker_protocol_is_strict_utf8_in_both_directions(worker, tmp_path):
+    plan = example(worker.runtime_id)
+    plan["plan_id"] = "plan/é"
+    seal(plan)
+    payload = {"protocol": PROTOCOL, "request_id": "東京", "method": "prepare", "plan": plan}
+    env = {**os.environ, "PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252:replace"}
+    process = subprocess.run(
+        [sys.executable, "-m", "lineage_lab.chronos_bridge", "--job-root", str(tmp_path)],
+        input=canonical_bytes(payload) + b"\n",
+        capture_output=True,
+        env=env,
+        check=True,
+        timeout=60,
+    )
+    response = json.loads(process.stdout.decode("utf-8", errors="strict"))
+    assert response["request_id"] == "東京"
+    assert response["ok"], response
+    assert response["plan_id"] == "plan/é"
 
 
 def request(worker, method, **kwargs):
@@ -342,25 +506,13 @@ def test_full_example_publishes_atomic_partial_result(worker):
     )
     assert result["diagnostics"]["unexecuted_operation_ids"] == ["op/demo/move-1365"]
     assert "candidate_tables" in result["diagnostics"]["deferred"]
-    previous = {s["site_id"]: s["initial_population"] for s in plan["settlements"]}
-    for row in result["annual_censuses"]:
-        assert (
-            row["population"]
-            == previous[row["site_id"]]
-            + row["births"]
-            - row["deaths"]
-            + row["net_internal_migration"]
-        )
-        previous[row["site_id"]] = row["population"]
+    assert all("net_internal_migration" not in row for row in result["annual_censuses"])
+    previous = sum(s["initial_population"] for s in plan["settlements"])
     for year in range(1300, 1400):
-        assert (
-            sum(
-                row["net_internal_migration"]
-                for row in result["annual_censuses"]
-                if row["year"] == year
-            )
-            == 0
-        )
+        rows = [r for r in result["annual_censuses"] if r["year"] == year]
+        population = sum(r["population"] for r in rows)
+        assert population == previous + sum(r["births"] - r["deaths"] for r in rows)
+        previous = population
     assert "seconds" not in json.dumps(result)
     assert str(worker.job_root) not in json.dumps(result)
     assert set(result["provider_manifest"]["capabilities"]) == {"historical_soft_v1"}
@@ -392,6 +544,7 @@ def test_publication_failure_has_no_canonical_result(worker, monkeypatch):
         raise OSError("atomic publication unavailable")
 
     monkeypatch.setattr(os, "replace", fail_replace)
+    directories = set(worker.job_root.glob("job-*"))
     previous = set(worker.job_root.rglob("population-partial.json"))
     response = request(
         worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
@@ -399,6 +552,7 @@ def test_publication_failure_has_no_canonical_result(worker, monkeypatch):
     assert not response["ok"]
     assert set(worker.job_root.rglob("population-partial.json")) == previous
     assert not list(worker.job_root.rglob("*.partial"))
+    assert set(worker.job_root.glob("job-*")) == directories
 
 
 def test_one_job_at_a_time(worker):
@@ -425,6 +579,18 @@ def test_crisis_is_applied_once(worker):
     assert np.allclose(factors[1][exposed], 0.08)
     assert np.allclose(factors[1][~exposed], 0)
     assert np.allclose(factors[2][exposed], 0.7)
+    # Read actual death records, with draws separating a single hazard from a
+    # duplicated extra hazard (0.172 versus 0.23824).
+    ids = engine.alive.copy()
+    engine.data["birth"][ids] = 1280
+    engine.race_mortality[:] = 0.1
+    engine.race_male_mortality[:] = 1
+    draws = np.resize([0.15, 0.20], len(ids))
+    engine.rng = type("Draws", (), {"random": lambda self, size: draws.copy()})()
+    expected_dead = ids[exposed & (draws < 0.172)]
+    deaths, _ = engine._deaths(np.array([], np.int64))
+    assert deaths == len(expected_dead) > 0
+    assert np.array_equal(ids[engine.data["death"][ids] == 1303], expected_dead)
     assert config.events == []  # The program is not also copied into standalone events.
     program = HistoricalProgram(config)
     base = np.array([0.1, 0.1])
@@ -458,7 +624,7 @@ def test_independent_survival_composes_factors_before_additional_mortality(worke
     assert mortality_probability(np.array([0.1]), m, e)[0] == pytest.approx(1 - 0.9**2 * 0.92 * 0.8)
 
 
-def test_marker_does_not_anticipate_shock(worker):
+def test_future_shock_does_not_change_realized_past(worker):
     plan = example(worker.runtime_id)
     with_shock = partial_result(plan, translate_plan(plan))
     plan["shocks"] = []
@@ -469,32 +635,55 @@ def test_marker_does_not_anticipate_shock(worker):
         with_shock["provider_manifest"]["core_selection"]
         == without["provider_manifest"]["core_selection"]
     )
-    program = HistoricalProgram(translate_plan(plan))
-    assert program.baseline("site/demo/a", 1302) == (240 * 7, 7)
 
 
-def test_initial_shock_is_applied_before_first_census(worker):
+@pytest.mark.parametrize("factor", [500000, 2000000])
+def test_initial_shock_is_applied_before_first_census(worker, factor):
     plan = example(worker.runtime_id)
     plan["shocks"][0].update(
-        valid={"start_year": 1300, "end_year": 1301}, effects={"additional_mortality_bps": 10000}
+        valid={"start_year": 1300, "end_year": 1301},
+        effects={"additional_mortality_bps": 5000, "mortality_multiplier_ppm": factor},
     )
     plan["shocks"][0]["site_ids"] = [s["site_id"] for s in plan["settlements"]]
     result = partial_result(seal(plan), translate_plan(plan))
     first = [r for r in result["annual_censuses"] if r["year"] == 1300]
-    assert sum(r["population"] for r in first) == 0
-    assert sum(r["deaths"] for r in first) == 360
-    assert result["diagnostics"]["initial_delta"]["deaths"] == 360
+    assert 130 < sum(r["population"] for r in first) < 230
+    assert sum(r["population"] + r["deaths"] for r in first) == 360
+    assert result["diagnostics"]["initial_delta"]["deaths"] == sum(r["deaths"] for r in first)
     assert result["provider_manifest"]["core_selection"]["selected_attempt"] == 0
-    assert all(r["population"] == 0 for r in result["annual_censuses"])
     cohorts = Cohorts(translate_plan(plan), translate_plan(plan).settlements)
     cohorts.seed_founders(360)
     indices = np.arange(len(cohorts.records))
     survival = np.ones((len(indices), 2))
-    state = cohorts.initial_program(indices, cohorts.initial(indices), survival)
-    assert not state[:, :2].any()
+    before = cohorts.initial(indices)
+    state = cohorts.initial_program(indices, before, survival)
+    columns = cohorts.columns()
+    demo = cohorts.policy(1300)[0][0]
+    q = cohorts._mortality(demo, 1300 - columns["birth"])
+    base = np.column_stack((np.minimum(1, q * demo.male_mortality_factor), q))
+    expected_survival = (1 - base) ** max(0, factor / 1000000 - 1) * 0.5
+    assert np.allclose(survival, expected_survival)
     with pytest.raises(RuntimeError, match="already"):
         cohorts.initial_program(indices, state, survival)
-    assert not cohorts.curve(0)[:, :2].any()  # Query reconstruction includes bootstrap.
+    assert np.array_equal(cohorts.curve(0)[0, :2], state[0, :2])
+    # Independent core oracle from the same pre-shock founders and bootstrap draws.
+    full = translate_plan(plan).model_dump(mode="json")
+    full.update(population_model="full", hybrid=None, initial_population=100)
+    pristine = copy.deepcopy(full)
+    pristine["historical"]["events"] = []
+    founders = Engine(Scenario.model_validate(pristine))
+    ids, d = founders.alive, founders.data
+    ages, races = 1300 - d["birth"][ids], d["race"][ids]
+    base = founders.race_mortality[races, np.minimum(ages, founders.race_max_age[races])]
+    base = np.minimum(
+        1, base * np.where(d["sex"][ids] == 0, founders.race_male_mortality[races], 1)
+    )
+    expected = 1 - (1 - base) ** max(0, factor / 1000000 - 1) * 0.5
+    draws = np.random.default_rng([full["seed"], 0, 610]).random(len(ids))
+    core = Engine(Scenario.model_validate(full))
+    assert np.array_equal(d["birth"][ids], core.data["birth"][ids])
+    assert np.array_equal(core.data["death"][ids] == 1300, draws < expected)
+    assert core.rows[0][3] == int((draws < expected).sum())
     owner = type("Owner", (), {})()
     assert apply_initial_program(owner, lambda: 7) == 7
     with pytest.raises(RuntimeError):
@@ -530,7 +719,7 @@ def test_free_core_policy_is_query_independent(worker):
         calls.append((candidate.seed, candidate.hybrid.core_target_share))
         if candidate.hybrid.core_target_share:
             raise CoreBudgetExceeded("test core ceiling", year=1301)
-        return "projected"
+        return SimpleNamespace(summary={"core_founders_simulated": 0, "core_coverage": []})
 
     _, _, first = select_core_variant(plan, config, run)
     first_calls = calls.copy()
@@ -545,6 +734,17 @@ def test_free_core_policy_is_query_independent(worker):
     result = partial_result(seal(plan), translate_plan(plan))
     assert result["provider_manifest"]["core_selection"]["variant"] == "projected_only"
     assert all(row["simulated"] == 0 for row in result["annual_censuses"])
+    assert "no_long_hereditary_lineages" in result["diagnostics"]["lineage_scope"]
+    # Exercise the annual relative ceiling in HybridEngine, independently of
+    # the absolute Engine ceiling above, with actual construction and replay.
+    plan = example(worker.runtime_id)
+    plan["limits"].update(core_max_share_bps=500, max_core_living=1000)
+    config = translate_plan(seal(plan))
+    first = partial_result(plan, config)
+    second = partial_result(copy.deepcopy(plan), config)
+    assert first == second
+    attempts = first["provider_manifest"]["core_selection"]["attempts"]
+    assert any(a.get("constraint") == "core_max_share_bps" for a in attempts)
 
 
 @pytest.mark.parametrize(
@@ -575,12 +775,26 @@ def test_extinct_core_is_a_valid_result_and_required_core_never_projects(worker)
 
     def success(candidate):
         calls.append(candidate)
-        return "extinct"
+        return SimpleNamespace(
+            summary={
+                "core_founders_simulated": 2,
+                "core_coverage": [{"year": 1307, "core_alive": 0}],
+            }
+        )
 
-    assert select_core_variant(plan, translate_plan(plan), success)[0] == "extinct"
+    assert (
+        select_core_variant(plan, translate_plan(plan), success)[0].summary[
+            "core_founders_simulated"
+        ]
+        == 2
+    )
     assert len(calls) == 1
     plan["core_policy"] = "required_core"
     plan["limits"]["max_attempts"] = 8
+    calls.clear()
+    with pytest.raises(ProviderError, match="empty or extinct") as error:
+        select_core_variant(plan, translate_plan(plan), success)
+    assert error.value.code == "PopulationConstraintsUnsatisfied"
     calls.clear()
 
     def fail(candidate):
@@ -699,6 +913,18 @@ def test_capacity_history_reconstructs_without_query_dependent_births(worker):
         "capacity_multiplier_ppm": 10000,
         "fertility_multiplier_ppm": 700000,
     }
+    for site in plan["settlements"]:
+        first = site["occupation_episodes"][0]
+        second = copy.deepcopy(first)
+        first["valid"]["end_year"] = 1304
+        second["valid"]["start_year"] = 1304
+        second["capacity"] = first["capacity"] // 10
+        site["occupation_episodes"].append(second)
+    config = translate_plan(plan)
+    program = HistoricalProgram(config)
+    assert program.factors(1302, [0, 1])[4].tolist() == [1, 1]
+    assert program.factors(1304, [0, 1])[4].tolist() == pytest.approx([0.001, 0.1])
+    assert program.factors(1305, [0, 1])[4].tolist() == [0.1, 0.1]
     archive = HybridEngine(translate_plan(plan)).run()
     background = archive.background
     # Replay each cohort separately, in reverse order, using the full-site context.

@@ -126,6 +126,7 @@ def select_core_variant(plan, config, run=None):
         data["seed"] = _attempt_seed(plan["seed"], index)
         if projected:
             data["hybrid"]["core_target_share"] = 0
+            data["historical"]["limits"]["core_target_share_bps"] = 0
         candidate = type(config).model_validate(data)
         try:
             archive = run(candidate)
@@ -141,6 +142,23 @@ def select_core_variant(plan, config, run=None):
             if projected:
                 raise
         else:
+            has_core = archive.summary["core_founders_simulated"] > 0
+            if not free and (
+                not has_core or any(r["core_alive"] == 0 for r in archive.summary["core_coverage"])
+            ):
+                raise ProviderError(
+                    "PopulationConstraintsUnsatisfied",
+                    "Required core is empty or extinct within the public timeline",
+                    constraint="required_core",
+                    year=next(
+                        (
+                            r["year"]
+                            for r in archive.summary["core_coverage"]
+                            if r["core_alive"] == 0
+                        ),
+                        plan["timeline"]["start_year"],
+                    ),
+                )
             attempts.append({"index": index, "outcome": "selected", "seed": str(candidate.seed)})
             return (
                 archive,
@@ -148,7 +166,7 @@ def select_core_variant(plan, config, run=None):
                 {
                     "policy": plan["core_policy"],
                     "selected_attempt": index,
-                    "variant": "projected_only" if projected else "target_core",
+                    "variant": "target_core" if has_core else "projected_only",
                     "attempts": attempts,
                 },
             )
@@ -163,14 +181,9 @@ def partial_result(plan, config):
     archive, selected, policy = select_core_variant(plan, config)
     censuses = []
     sites = {s["provider_local_id"]: s for s in plan["settlements"]}
-    previous = {s["site_id"]: s["initial_population"] for s in sites.values()}
     for source in archive._payload["integrated_censuses"]:
         row = dict(source)
         row["site_id"] = sites[row.pop("local_id")]["site_id"]
-        row["net_internal_migration"] = (
-            row["population"] - previous[row["site_id"]] - row["births"] + row["deaths"]
-        )
-        previous[row["site_id"]] = row["population"]
         row.update(precision="realized", coverage="partial")
         censuses.append(row)
     censuses.sort(key=lambda r: (r["site_id"].encode("utf-8"), r["year"]))
@@ -190,6 +203,40 @@ def partial_result(plan, config):
     runtime = runtime_manifest()
     first_year = plan["timeline"]["start_year"]
     first = next(r for r in archive._payload["history"] if r["year"] == first_year)
+    without_consequence = []
+    for shock in plan["shocks"]:
+        if shock["valid"] != {"start_year": first_year, "end_year": first_year + 1}:
+            continue
+        effects = {
+            key: value
+            for key, value in shock["effects"].items()
+            if (
+                key
+                in {
+                    "fertility_multiplier_ppm",
+                    "capacity_multiplier_ppm",
+                    "migration_multiplier_ppm",
+                }
+                and value != 1000000
+            )
+            or (key == "mortality_multiplier_ppm" and value < 1000000)
+        }
+        if effects:
+            without_consequence.append(
+                {
+                    "source_event_id": shock["source_event_id"],
+                    "site_ids": shock["site_ids"],
+                    "effects": effects,
+                    "reason": "initial_only; no_annual_transition",
+                }
+            )
+    without_consequence.sort(key=lambda row: row["source_event_id"].encode("utf-8"))
+    lineage_scope = (
+        "projected_only; no_simulated_lineages; background_parentage_is_projected; "
+        "bounded_by_provider_coverage_and_projection_depth; no_long_hereditary_lineages"
+        if policy["variant"] == "projected_only"
+        else "simulated_core_only; background_parentage_is_projected"
+    )
     result = {
         "format": PARTIAL_FORMAT,
         "result_type": "PartialPopulationDiagnostics",
@@ -219,9 +266,10 @@ def partial_result(plan, config):
                 "deaths": first["deaths"],
                 "pre_shock_population": config.initial_population,
                 "population": first["population"],
+                "effects_without_consequence": without_consequence,
             },
             "core_coverage": [coverage[y] for y in sorted(coverage)],
-            "lineage_scope": "simulated_core_only; background_parentage_is_projected",
+            "lineage_scope": lineage_scope,
             "regulation": "disabled_pending_site_regulator",
             "deferred": [
                 "candidate_tables",
@@ -333,8 +381,10 @@ class Worker:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(staging, target)
-        finally:
+        except BaseException:
             staging.unlink(missing_ok=True)
+            directory.rmdir()
+            raise
         return {
             "plan_id": plan_id,
             "result_fingerprint": result["result_fingerprint"],
@@ -394,8 +444,12 @@ class Worker:
             if not isinstance(exc, ProviderError):
                 from pydantic import ValidationError
 
-                if isinstance(
-                    exc, (ValidationError, ValueError, TypeError, KeyError, UnicodeError)
+                if (
+                    isinstance(request, dict)
+                    and request.get("method") == "prepare"
+                    and isinstance(
+                        exc, (ValidationError, ValueError, TypeError, KeyError, UnicodeError)
+                    )
                 ):
                     exc = ProviderError(
                         "PopulationConstraintsUnsatisfied",
@@ -418,6 +472,10 @@ class Worker:
 
 
 def main(argv=None):
+    # The wire format is strict UTF-8, including on Windows with a legacy locale
+    # or PYTHONIOENCODING override. Parent-process pipe settings do not control it.
+    sys.stdin.reconfigure(encoding="utf-8", errors="strict")
+    sys.stdout.reconfigure(encoding="utf-8", errors="strict")
     parser = argparse.ArgumentParser(
         description="Chronos local population worker (partial S3 step 1)"
     )

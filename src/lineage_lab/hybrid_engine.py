@@ -85,7 +85,14 @@ class HybridEngine:
 
         started = time.perf_counter()
         config, places = self.config, self.settlements
-        core_size = math.floor(config.initial_population * config.hybrid.core_target_share)
+        if config.historical:
+            core_size = (
+                config.initial_population
+                * config.historical.limits["core_target_share_bps"]
+                // 10000
+            )
+        else:
+            core_size = math.floor(config.initial_population * config.hybrid.core_target_share)
         if core_size == 1:
             core_size = 0
 
@@ -226,8 +233,13 @@ class HybridEngine:
             population = int(state[:, :2].sum()) + core_rows[t][1]
             births_ever += births + core_rows[t][2]
             core_ever = core_size + sum(r[2] for r in core_rows[: t + 1])
-            live_cap = math.floor(population * config.hybrid.core_max_share)
-            history_cap = math.floor(births_ever * config.hybrid.core_historical_max_share)
+            if config.historical:
+                share_bps = config.historical.limits["core_max_share_bps"]
+                live_cap = population * share_bps // 10000
+                history_cap = births_ever * share_bps // 10000
+            else:
+                live_cap = math.floor(population * config.hybrid.core_max_share)
+                history_cap = math.floor(births_ever * config.hybrid.core_historical_max_share)
             if core_rows[t][1] > live_cap or core_ever > history_cap:
                 if config.historical:
                     raise CoreBudgetExceeded(
