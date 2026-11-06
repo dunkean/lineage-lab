@@ -14,6 +14,12 @@ from collections import OrderedDict
 import numpy as np
 
 from .config import Demography, Society
+from .historical_program import (
+    HistoricalProgram,
+    ProviderError,
+    apply_initial_program,
+    mortality_probability,
+)
 from .projection import inverse, permutation, permute, uniforms
 
 
@@ -29,6 +35,7 @@ def apportion(total, weights):
 class Cohorts:
     def __init__(self, config, settlements, records=None, factors=None):
         self.config, self.settlements = config, settlements
+        self.program = HistoricalProgram(config) if config.historical else None
         self.seed, self.start = config.seed, config.start_year
         self.end = self.start + config.duration
         self.records = records or []
@@ -100,6 +107,13 @@ class Cohorts:
                             * value
                         )
         counts = apportion(total, weights)
+        if self.program:
+            initial = [p.metadata["chronos_initial_population"] for p in self.settlements]
+            core = apportion(self.config.initial_population - total, initial)
+            counts[:] = 0
+            for p, target in zip(self.settlements, np.array(initial) - core, strict=True):
+                positions = [i for i, key in enumerate(keys) if key[0] == p.id]
+                counts[positions] = apportion(int(target), np.asarray(weights)[positions])
         combined = {}
         for (place, race, birth, sex), count in zip(keys, counts, strict=True):
             if count:
@@ -110,6 +124,10 @@ class Cohorts:
 
     def append(self, place, race, birth, counts):
         index = len(self.records)
+        if self.program and index >= self.config.historical.limits["max_cohorts"]:
+            raise ProviderError(
+                "BudgetExceeded", "Cohort budget exceeded", constraint="max_cohorts"
+            )
         demos, society = self.policy(max(self.start, birth))
         d = demos[race]
         trait_lower = max(
@@ -184,6 +202,27 @@ class Cohorts:
         rates = np.where(ages == 0, demo.infant_mortality, rates)
         return np.where(ages >= demo.max_age, 1.0, np.clip(rates, 0, 1))
 
+    def record_site_pressure(self, year, previous):
+        """Publish annual capacity pressure once; queries reuse the same context."""
+        columns = self.columns()
+        by_place = np.bincount(
+            columns["place_index"],
+            weights=previous[:, :2].sum(axis=1),
+            minlength=len(self.settlements),
+        )
+        share = sum(sum(r["counts"]) for r in self.records if r["birth"] <= self.start)
+        share /= self.config.initial_population
+        places = [p.id for p in self.settlements]
+        capacity = self.program.factors(year, places)[4]
+        capacities = np.array([p.capacity for p in self.settlements]) * share * capacity
+        pressure = np.minimum(1, capacities / np.maximum(1, by_place))
+        factors = self.factors[year - self.start]
+        values = {str(p): float(q) for p, q in zip(places, pressure, strict=True)}
+        if len(factors) == 2:
+            factors.append(values)
+        else:
+            factors[2] = values
+
     def bounds(self, indices, year, previous):
         """Birth selection is a periodic range, so spacing has a closed inverse."""
         indices = np.asarray(indices, dtype=np.int64)
@@ -208,6 +247,22 @@ class Cohorts:
                 mask = self.event_mask(event, columns, indices, ages)
                 if event.sex in {"all", "female"}:
                     probability[mask] *= event.fertility_factor
+        if self.program:
+            _, _, fertility, _, _ = self.program.factors(year, columns["place"][indices])
+            factors = self.factors[year - self.start]
+            if len(factors) < 3 and np.any(available):
+                if len(indices) != len(self.records):
+                    raise ProviderError(
+                        "InvalidPopulationResult",
+                        "Missing annual site pressure for cohort reconstruction",
+                    )
+                self.record_site_pressure(year, previous)
+            pressure = (
+                np.array([factors[2][str(int(p))] for p in columns["place"][indices]])
+                if len(factors) > 2
+                else 1
+            )
+            probability = mortality_probability(probability, fertility * pressure, 0)
         factor = self.factors[year - self.start][0]
         count = np.floor(
             available * np.minimum(1, probability * self.spacing * factor) * valid
@@ -237,6 +292,11 @@ class Cohorts:
                         rates[mask, sex] = 1 - (1 - q) ** event.mortality_factor * (
                             1 - event.extra_mortality
                         )
+        if self.program:
+            factor, extra, _, _, _ = self.program.factors(year, columns["place"][indices])
+            rates = mortality_probability(rates, factor[:, None], extra[:, None])
+            for race, demo in enumerate(demos):
+                rates[(race_ids == race) & (ages >= demo.max_age)] = 1
         # Maternal risk is a cohort hazard, based on the same birth selection.
         if newborns is None:
             _, _, newborns = self.bounds(indices, year, previous)
@@ -283,6 +343,33 @@ class Cohorts:
         ).astype(np.int64)
         return np.column_stack((counts, paired, np.zeros(len(indices), np.int64)))
 
+    def initial_program(self, indices, state, survival):
+        def apply():
+            return self._initial_shock(indices, state, survival)
+
+        return apply_initial_program(self, apply)
+
+    def _initial_shock(self, indices, state, survival):
+        columns = self.columns()
+        demos, _ = self.policy(self.start)
+        ages, races = self.start - columns["birth"][indices], columns["race"][indices]
+        base = np.zeros((len(indices), 2))
+        for race, demo in enumerate(demos):
+            mask = races == race
+            q = self._mortality(demo, ages[mask])
+            base[mask, 0] = np.minimum(1, q * demo.male_mortality_factor)
+            base[mask, 1] = q
+        factor, extra, _, _, _ = self.program.factors(self.start, columns["place"][indices])
+        rates = mortality_probability(base, factor[:, None], extra[:, None], initial=True)
+        survival *= 1 - rates
+        rounding = np.column_stack([uniforms(self.seed, indices, ["survival", s]) for s in (0, 1)])
+        result = state.copy()
+        result[:, :2] = np.minimum(
+            state[:, :2],
+            np.floor(columns["counts"][indices] * survival + rounding).astype(np.int64),
+        )
+        return result
+
     def curve(self, index):
         """Reconstruct a cohort's count curve, never its population of persons."""
         if index in self._curves:
@@ -294,6 +381,8 @@ class Cohorts:
         survival = np.ones((1, 2))
         if record["birth"] <= self.start:
             state = self.initial([index])
+            if self.program:
+                state = self._initial_shock(np.array([index]), state, survival)
             result[0] = state[0]
             begin = self.start + 1
         else:

@@ -20,7 +20,7 @@ lineage-lab = "lineage_lab.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-lineage_lab = ["explorer.html", "studio.css", "studio.js", "vendor/*", "presets/*.yaml"]
+lineage_lab = ["explorer.html", "studio.css", "studio.js", "vendor/*", "presets/*.yaml", "chronos_contract/*.json", "chronos_contract/*.lock"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

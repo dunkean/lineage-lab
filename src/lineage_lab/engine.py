@@ -18,6 +18,12 @@ import numpy as np
 
 from .config import Demography, Scenario, Society, virtual_map
 from .events import EventBuffer
+from .historical_program import (
+    CoreBudgetExceeded,
+    HistoricalProgram,
+    apply_initial_program,
+    mortality_probability,
+)
 from .politics import PoliticalTimeline
 from .regulation import PopulationRegulator
 from .reproduction import ReproductiveTraits, mortality_summary
@@ -60,6 +66,7 @@ class DependentIndex:
 class Engine:
     def __init__(self, config: Scenario, store: Store | None = None, rules=()):
         self.config, self.store = config, store
+        self.program = HistoricalProgram(config) if config.historical else None
         self.reproductive_traits = ReproductiveTraits(config)
         self.rules = tuple(rules)
         self.society = config.society
@@ -160,6 +167,8 @@ class Engine:
     def _neighbors(self):
         """Radius graph using spatial buckets; never allocate an S x S matrix."""
         society = self.society
+        if self.program:
+            return self.program.neighbors(self.config.start_year, self.settlements, society)
         radius = max(
             society.marriage_radius,
             society.migration_radius,
@@ -254,6 +263,12 @@ class Engine:
         demo = self.demography
         weights = np.array([p.initial_weight for p in self.settlements])
         places = self.rng.choice(self.place_ids, len(ids), p=weights / weights.sum())
+        if self.program:
+            from .cohorts import apportion
+
+            weights = [p.metadata["chronos_initial_population"] for p in self.settlements]
+            places = np.repeat(self.place_ids, apportion(len(ids), weights))
+            self.rng.shuffle(places)
         self.data["place"][ids] = self.data["birth_place"][ids] = places
         self.data["place_slot"][ids] = self.sorted_slots[
             np.searchsorted(self.sorted_places, places)
@@ -306,8 +321,27 @@ class Engine:
         spacing = self.race_birth_spacing[self.data["race"][partnered]]
         self.data["last_birth"][partnered] = self.year - self.rng.integers(0, spacing + 1)
         migrations = len(self.moves)
+        initial_deaths = 0
+        if self.program:
+            initial_deaths = apply_initial_program(self, self._initial_historical_shock)
         self._flush_history()
-        self._census(0, 0, marriages, 0, migrations, 0, local)
+        self._census(0, initial_deaths, marriages, 0, migrations, 0, local)
+
+    def _initial_historical_shock(self):
+        ids, d = self.alive, self.data
+        ages, races = self.year - d["birth"][ids], d["race"][ids]
+        base = self.race_mortality[races, np.minimum(ages, self.race_max_age[races])]
+        base = np.minimum(
+            1, base * np.where(d["sex"][ids] == 0, self.race_male_mortality[races], 1)
+        )
+        factor, extra, _, _, _ = self.program.factors(self.year, d["place"][ids])
+        rates = mortality_probability(base, factor, extra, initial=True)
+        draws = np.random.default_rng([self.config.seed, 0, 610]).random(len(ids))
+        dead = ids[draws < rates]
+        d["death"][dead], d["death_place"][dead] = self.year, d["place"][dead]
+        self._end_union(dead, "death")
+        self.alive = ids[d["death"][ids] == NO_YEAR]
+        return len(dead)
 
     def ancestors(self, identity, depth=None):
         seen, frontier = {int(identity)}, [int(identity)]
@@ -679,8 +713,10 @@ class Engine:
     def _events(self, ids, process="diagnostic"):
         """Composable yearly hazards; local effects and age/sex targeting."""
         size = len(ids)
-        if not self.rules and not any(
-            e.start_year <= self.year <= e.end_year for e in self.config.events
+        if (
+            not self.program
+            and not self.rules
+            and not any(e.start_year <= self.year <= e.end_year for e in self.config.events)
         ):
             one = np.broadcast_to(np.array(1.0), (size,))
             zero = np.broadcast_to(np.array(0.0), (size,))
@@ -719,6 +755,13 @@ class Engine:
                 else list(range(len(capacity)))
             )
             capacity[places] *= event.capacity_factor
+        if self.program:
+            pm, pe, pf, pg, _ = self.program.factors(self.year, self.data["place"][ids])
+            mortality *= pm
+            extra = 1 - (1 - extra) * (1 - pe)
+            fertility *= pf
+            migration *= pg
+            capacity *= self.program.factors(self.year, self.place_ids)[4]
         hazards = {
             "mortality": mortality,
             "extra_mortality": extra,
@@ -773,14 +816,14 @@ class Engine:
         # birth probability, but never override infertility or voluntary childlessness.
         partners = d["partner"][fertile]
         fertile = fertile[
-            (d["reproduction_flags"][fertile] == 0)
-            & (d["reproduction_flags"][partners] == 0)
+            (d["reproduction_flags"][fertile] == 0) & (d["reproduction_flags"][partners] == 0)
         ]
         ages = self.year - d["birth"][fertile]
         _, _, factor, _, capacity_factor = self._events(fertile, "births")
         counts = np.bincount(d["place_slot"][ids], minlength=len(self.settlements))
         capacity = np.array([p.capacity for p in self.settlements], dtype=float)
-        capacity *= (1 + self.society.capacity_growth) ** (self.year - self.config.start_year)
+        if not self.program:
+            capacity *= (1 + self.society.capacity_growth) ** (self.year - self.config.start_year)
         capacity *= capacity_factor
         pressure = np.minimum(1, capacity / np.maximum(counts, 1))
         local_pressure = pressure[d["place_slot"][fertile]]
@@ -991,6 +1034,17 @@ class Engine:
         )
 
     def _census(self, births, deaths, marriages, divorces, migrations, infants, local):
+        if self.program:
+            limits = self.config.historical.limits
+            if (
+                len(self.alive) > limits["max_core_living"]
+                or self.n > limits["max_core_historical"]
+            ):
+                raise CoreBudgetExceeded(
+                    "Simulated core exceeds its absolute budget",
+                    year=self.year,
+                    constraint="absolute_core_budget",
+                )
         d, ids = self.data, self.alive
         if self.config.backend == "compiled":
             from numba import config as numba_config
@@ -1168,6 +1222,9 @@ class Engine:
         ):
             self.year = year
             self._apply_periods()
+            if self.program:
+                self.neighbors = self.program.neighbors(year, self.settlements, self.society)
+                self._native_key = None
             self._random_stream("births")
             started = time.perf_counter()
             births, maternal = self._births()
@@ -1207,9 +1264,7 @@ class Engine:
 
     def summary(self):
         births = sum(row[2] for row in self.rows)
-        mortality = mortality_summary(
-            self.data, self.n, self.config.initial_population, self.year
-        )
+        mortality = mortality_summary(self.data, self.n, self.config.initial_population, self.year)
         marriages = sum(row[4] for row in self.rows)
         return {
             "reproductive_traits_version": 1,

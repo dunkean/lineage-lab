@@ -331,17 +331,36 @@ class HybridSettings(Settings):
         return self
 
 
+class BaselineMarker(Settings):
+    site_id: str
+    year: int
+    population: int = Field(ge=0)
+    tolerance_bps: int = Field(ge=0, le=10000)
+
+
+class HistoricalSettings(Settings):
+    """Explicit Chronos activation; never inferred from standalone events."""
+
+    events: list[Event] = Field(default_factory=list)
+    baseline_markers: list[BaselineMarker] = Field(default_factory=list)
+    kinship_profiles: list[dict] = Field(default_factory=list)
+    mobility_edges: list[dict] = Field(default_factory=list)
+    occupation_episodes: dict[int, list[dict]] = Field(default_factory=dict)
+    limits: dict[str, int] = Field(default_factory=dict)
+
+
 class Scenario(Settings):
     schema_version: Literal[1, 2] = 1
     population_model: Literal["full", "hybrid"] = "full"
     hybrid: HybridSettings | None = None
+    historical: HistoricalSettings | None = Field(default=None, exclude_if=lambda v: v is None)
     seed: int = Field(default=42, ge=0)
     backend: Literal["compiled", "reference"] = "compiled"
     compute_threads: int = Field(default=4, ge=1, le=64)
     start_year: int = Field(default=1000, ge=-100000, le=100000)
     generations: int = Field(default=5, ge=1, le=100)
     generation_years: int = Field(default=25, ge=1, le=100)
-    years: int | None = Field(default=None, ge=1, le=10000)
+    years: int | None = Field(default=None, ge=0, le=10000)
     initial_population: int = Field(default=2000, ge=2, le=100_000_000)
     target_population: int | None = Field(default=None, ge=2, le=100_000_000)
     calibration_population: int = Field(default=2000, ge=100, le=100000)
@@ -378,6 +397,12 @@ class Scenario(Settings):
 
     @model_validator(mode="after")
     def references(self):
+        if self.historical is None and self.years == 0:
+            raise ValueError("Standalone duration must be positive")
+        if self.historical is not None and (
+            self.events or self.target_population is not None or self.target_mode != "report"
+        ):
+            raise ValueError("Integrated history requires no standalone events or targets")
         if self.population_model == "full" and self.hybrid is not None:
             raise ValueError("Hybrid parameters require population_model: hybrid")
         if self.population_model == "hybrid":

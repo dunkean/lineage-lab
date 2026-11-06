@@ -1,0 +1,1311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:chronos:population-plan:1",
+  "title": "Plan démographique intégré de Chronos",
+  "description": "Contrat proposé, pas encore exécuté par Lineage Lab. Intervalles semi-ouverts, entiers canoniques. prepare valide les références, dictionnaires du paragraphe 24, capacités par lot et faisabilité.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "plan_id": {
+      "$ref": "#/$defs/id"
+    },
+    "canon_id": {
+      "$ref": "#/$defs/id"
+    },
+    "domain_id": {
+      "$ref": "#/$defs/id"
+    },
+    "plan_fingerprint": {
+      "$ref": "#/$defs/id"
+    },
+    "timeline": {
+      "$ref": "#/$defs/span"
+    },
+    "world_seed": {
+      "$ref": "#/$defs/u64"
+    },
+    "seed": {
+      "$ref": "#/$defs/u64"
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": [
+            "lineage_hybrid",
+            "procedural"
+          ]
+        },
+        "algorithm_id": {
+          "$ref": "#/$defs/id"
+        },
+        "runtime_fingerprint": {
+          "$ref": "#/$defs/id"
+        },
+        "compute_threads": {
+          "const": 1
+        },
+        "projection_version": {
+          "$ref": "#/$defs/id"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "mode",
+        "algorithm_id",
+        "runtime_fingerprint",
+        "compute_threads",
+        "projection_version",
+        "capabilities"
+      ]
+    },
+    "catalogue_fingerprints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "history": {
+          "$ref": "#/$defs/id"
+        },
+        "cultures": {
+          "$ref": "#/$defs/id"
+        },
+        "demography": {
+          "$ref": "#/$defs/id"
+        },
+        "institutions": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "history",
+        "cultures",
+        "demography",
+        "institutions"
+      ]
+    },
+    "demography_society_id": {
+      "$ref": "#/$defs/id"
+    },
+    "resolved_profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "society": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/id"
+            },
+            "schema_id": {
+              "const": "chronos-lineage-society-1"
+            },
+            "parameters": {
+              "$ref": "#/$defs/parameters"
+            },
+            "status_weights": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            },
+            "core_status_weights": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            }
+          },
+          "required": [
+            "id",
+            "schema_id",
+            "parameters",
+            "status_weights",
+            "core_status_weights"
+          ]
+        },
+        "ancestries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "reproduction_mode": {
+                "enum": [
+                  "biparental",
+                  "custom"
+                ]
+              },
+              "parameters": {
+                "$ref": "#/$defs/parameters"
+              }
+            },
+            "required": [
+              "id",
+              "reproduction_mode",
+              "parameters"
+            ]
+          },
+          "minItems": 1
+        },
+        "social_classes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "provider_rank": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 255
+              }
+            },
+            "required": [
+              "id",
+              "provider_rank"
+            ]
+          },
+          "minItems": 1,
+          "maxItems": 256
+        },
+        "external": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "ancestry_weights": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                }
+              },
+              "adult_age_min": {
+                "type": "integer",
+                "minimum": 18,
+                "maximum": 2000
+              },
+              "adult_age_max": {
+                "type": "integer",
+                "minimum": 18,
+                "maximum": 2000
+              },
+              "household_size_weights": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                }
+              }
+            },
+            "required": [
+              "id",
+              "ancestry_weights",
+              "adult_age_min",
+              "adult_age_max",
+              "household_size_weights"
+            ]
+          }
+        },
+        "kinship": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "mode": {
+                "const": "bilateral_projected_v1"
+              },
+              "dependent_age": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "min_parent_age": {
+                "type": "integer",
+                "minimum": 18,
+                "maximum": 2000
+              },
+              "household_model": {
+                "const": "resident_partition_v1"
+              },
+              "long_lineages_core_only": {
+                "const": true
+              },
+              "founder_foster_children_limit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 32
+              }
+            },
+            "required": [
+              "id",
+              "mode",
+              "dependent_age",
+              "min_parent_age",
+              "household_model",
+              "long_lineages_core_only",
+              "founder_foster_children_limit"
+            ]
+          }
+        }
+      },
+      "required": [
+        "society",
+        "ancestries",
+        "social_classes",
+        "external",
+        "kinship"
+      ]
+    },
+    "settlements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "provider_local_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "coordinate_frame": {
+            "$ref": "#/$defs/id"
+          },
+          "x_mm": {
+            "type": "integer",
+            "minimum": -9000000000000000,
+            "maximum": 9000000000000000
+          },
+          "y_mm": {
+            "type": "integer",
+            "minimum": -9000000000000000,
+            "maximum": 9000000000000000
+          },
+          "foundation_year": {
+            "$ref": "#/$defs/year"
+          },
+          "initial_population": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "ancestry_weights": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          },
+          "history_culture_id": {
+            "$ref": "#/$defs/id"
+          },
+          "kinship_profile_id": {
+            "$ref": "#/$defs/id"
+          },
+          "occupation_episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/occupation_episode"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "site_id",
+          "provider_local_id",
+          "coordinate_frame",
+          "x_mm",
+          "y_mm",
+          "foundation_year",
+          "initial_population",
+          "ancestry_weights",
+          "history_culture_id",
+          "kinship_profile_id",
+          "occupation_episodes"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 32
+    },
+    "baseline_markers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "year": {
+            "$ref": "#/$defs/year"
+          },
+          "population": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "tolerance_bps": {
+            "$ref": "#/$defs/bps"
+          }
+        },
+        "required": [
+          "site_id",
+          "year",
+          "population",
+          "tolerance_bps"
+        ]
+      }
+    },
+    "shocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_event_id": {
+            "$ref": "#/$defs/id"
+          },
+          "valid": {
+            "$ref": "#/$defs/span"
+          },
+          "site_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "severity_profile_id": {
+            "$ref": "#/$defs/id"
+          },
+          "recovery_years": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "composition": {
+            "const": "independent_survival_v1"
+          },
+          "effects": {
+            "$ref": "#/$defs/effects"
+          }
+        },
+        "required": [
+          "source_event_id",
+          "valid",
+          "site_ids",
+          "severity_profile_id",
+          "recovery_years",
+          "composition",
+          "effects"
+        ]
+      }
+    },
+    "historical_program": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op_id": {
+                "$ref": "#/$defs/id"
+              },
+              "source_event_id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "move_households"
+              },
+              "year": {
+                "$ref": "#/$defs/year"
+              },
+              "origin_site_id": {
+                "$ref": "#/$defs/id"
+              },
+              "destination_site_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/id"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "destination_port_id": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/id"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target_households": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000000
+              },
+              "precision": {
+                "enum": [
+                  "expected",
+                  "exact"
+                ]
+              }
+            },
+            "required": [
+              "op_id",
+              "source_event_id",
+              "kind",
+              "year",
+              "origin_site_id",
+              "destination_site_id",
+              "destination_port_id",
+              "target_households",
+              "precision"
+            ],
+            "oneOf": [
+              {
+                "properties": {
+                  "destination_site_id": {
+                    "$ref": "#/$defs/id"
+                  },
+                  "destination_port_id": {
+                    "type": "null"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "destination_site_id": {
+                    "type": "null"
+                  },
+                  "destination_port_id": {
+                    "$ref": "#/$defs/id"
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op_id": {
+                "$ref": "#/$defs/id"
+              },
+              "source_event_id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "protect_person"
+              },
+              "person_id": {
+                "$ref": "#/$defs/id"
+              },
+              "valid": {
+                "$ref": "#/$defs/span"
+              }
+            },
+            "required": [
+              "op_id",
+              "source_event_id",
+              "kind",
+              "person_id",
+              "valid"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op_id": {
+                "$ref": "#/$defs/id"
+              },
+              "source_event_id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "force_death"
+              },
+              "person_id": {
+                "$ref": "#/$defs/id"
+              },
+              "year": {
+                "$ref": "#/$defs/year"
+              }
+            },
+            "required": [
+              "op_id",
+              "source_event_id",
+              "kind",
+              "person_id",
+              "year"
+            ]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "op_id": {
+                "$ref": "#/$defs/id"
+              },
+              "source_event_id": {
+                "$ref": "#/$defs/id"
+              },
+              "kind": {
+                "const": "admit_people"
+              },
+              "person_ids": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/id"
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "source_port_id": {
+                "$ref": "#/$defs/id"
+              },
+              "year": {
+                "$ref": "#/$defs/year"
+              }
+            },
+            "required": [
+              "op_id",
+              "source_event_id",
+              "kind",
+              "person_ids",
+              "source_port_id",
+              "year"
+            ]
+          }
+        ]
+      }
+    },
+    "role_demands": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "slot_id": {
+            "$ref": "#/$defs/id"
+          },
+          "office_id": {
+            "$ref": "#/$defs/id"
+          },
+          "site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "valid": {
+            "$ref": "#/$defs/span"
+          },
+          "policy": {
+            "enum": [
+              "best_effort",
+              "required"
+            ]
+          },
+          "expected_simultaneous_holders": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "min_age": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "max_age": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "status_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "uniqueItems": true
+          },
+          "activity_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "slot_id",
+          "office_id",
+          "site_id",
+          "valid",
+          "policy",
+          "expected_simultaneous_holders",
+          "min_age",
+          "max_age",
+          "status_ids",
+          "activity_ids"
+        ]
+      }
+    },
+    "fixed_people": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "person_id": {
+            "$ref": "#/$defs/id"
+          },
+          "birth_year": {
+            "$ref": "#/$defs/year"
+          },
+          "death_year": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/year"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ancestry_profile_id": {
+            "$ref": "#/$defs/id"
+          },
+          "sex": {
+            "enum": [
+              "F",
+              "M"
+            ]
+          },
+          "parent_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "maxItems": 2
+          },
+          "initial_site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "protected_spans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/span"
+            }
+          }
+        },
+        "required": [
+          "person_id",
+          "birth_year",
+          "death_year",
+          "ancestry_profile_id",
+          "sex",
+          "parent_ids",
+          "initial_site_id",
+          "protected_spans"
+        ]
+      }
+    },
+    "exact_constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "constraint_id": {
+            "$ref": "#/$defs/id"
+          },
+          "source_event_id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "additional_deaths",
+              "population_at_date"
+            ]
+          },
+          "year": {
+            "$ref": "#/$defs/year"
+          },
+          "site_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000000
+          },
+          "phase": {
+            "enum": [
+              30,
+              80
+            ]
+          },
+          "effect_mode": {
+            "enum": [
+              "additional",
+              "replace",
+              "assert"
+            ]
+          },
+          "count_basis": {
+            "enum": [
+              "year_opening_population",
+              "eligible_survivors",
+              "state_at_date"
+            ]
+          }
+        },
+        "required": [
+          "constraint_id",
+          "source_event_id",
+          "kind",
+          "year",
+          "site_ids",
+          "count",
+          "phase",
+          "effect_mode",
+          "count_basis"
+        ],
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "population_at_date"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "phase": {
+                  "const": 80
+                },
+                "effect_mode": {
+                  "const": "assert"
+                },
+                "count_basis": {
+                  "const": "state_at_date"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "phase": {
+                  "const": 30
+                },
+                "effect_mode": {
+                  "enum": [
+                    "additional",
+                    "replace"
+                  ]
+                },
+                "count_basis": {
+                  "enum": [
+                    "year_opening_population",
+                    "eligible_survivors"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "boundary_ports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "core_target_share_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "core_max_share_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "max_core_living": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_core_historical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_cohorts": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_candidate_slots": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000
+        },
+        "max_halo_contacts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1024
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "max_projection_ancestors": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_projection_descendants": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "max_result_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483648
+        }
+      },
+      "required": [
+        "core_target_share_bps",
+        "core_max_share_bps",
+        "max_core_living",
+        "max_core_historical",
+        "max_cohorts",
+        "max_candidate_slots",
+        "max_halo_contacts",
+        "max_attempts",
+        "max_projection_ancestors",
+        "max_projection_descendants",
+        "max_result_bytes"
+      ]
+    },
+    "regulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "baseline_rebased_v1"
+        },
+        "min_fertility_multiplier_ppm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "max_fertility_multiplier_ppm": {
+          "type": "integer",
+          "minimum": 1000000,
+          "maximum": 10000000
+        },
+        "max_birth_probability_bps": {
+          "$ref": "#/$defs/bps"
+        },
+        "response_years": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "paused_during_shock_and_recovery": {
+          "const": true
+        }
+      },
+      "required": [
+        "mode",
+        "min_fertility_multiplier_ppm",
+        "max_fertility_multiplier_ppm",
+        "max_birth_probability_bps",
+        "response_years",
+        "paused_during_shock_and_recovery"
+      ]
+    },
+    "core_policy": {
+      "enum": [
+        "free_try3_then_projected",
+        "required_core"
+      ]
+    },
+    "mobility_edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "edge_id": {
+            "$ref": "#/$defs/id"
+          },
+          "from_site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "to_site_id": {
+            "$ref": "#/$defs/id"
+          },
+          "valid": {
+            "$ref": "#/$defs/span"
+          },
+          "travel_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "bidirectional": {
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "land",
+              "water",
+              "air",
+              "mixed"
+            ]
+          }
+        },
+        "required": [
+          "edge_id",
+          "from_site_id",
+          "to_site_id",
+          "valid",
+          "travel_days",
+          "bidirectional",
+          "mode"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema_version",
+    "plan_id",
+    "canon_id",
+    "domain_id",
+    "plan_fingerprint",
+    "timeline",
+    "world_seed",
+    "seed",
+    "provider",
+    "catalogue_fingerprints",
+    "demography_society_id",
+    "resolved_profiles",
+    "settlements",
+    "baseline_markers",
+    "shocks",
+    "historical_program",
+    "role_demands",
+    "fixed_people",
+    "exact_constraints",
+    "boundary_ports",
+    "limits",
+    "regulation",
+    "core_policy",
+    "mobility_edges"
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "year": {
+      "type": "integer",
+      "minimum": -100000,
+      "maximum": 100000
+    },
+    "bps": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "ppm": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000000
+    },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "start_year": {
+          "$ref": "#/$defs/year"
+        },
+        "end_year": {
+          "$ref": "#/$defs/year"
+        }
+      },
+      "required": [
+        "start_year",
+        "end_year"
+      ]
+    },
+    "effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "additional_mortality_bps": {
+          "$ref": "#/$defs/bps"
+        },
+        "mortality_multiplier_ppm": {
+          "$ref": "#/$defs/ppm"
+        },
+        "fertility_multiplier_ppm": {
+          "$ref": "#/$defs/ppm"
+        },
+        "migration_multiplier_ppm": {
+          "$ref": "#/$defs/ppm"
+        },
+        "capacity_multiplier_ppm": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        }
+      },
+      "required": [],
+      "minProperties": 1
+    },
+    "parameters": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "string"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "description": "Dictionnaire normalisé du paragraphe 24; noms, unités et contraintes contrôlés par prepare pour la version de profil."
+    },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port_id": {
+          "$ref": "#/$defs/id"
+        },
+        "contact_id": {
+          "$ref": "#/$defs/id"
+        },
+        "mode": {
+          "enum": [
+            "statistical_reservoir",
+            "committed_bridge"
+          ]
+        },
+        "entry_site_id": {
+          "$ref": "#/$defs/id"
+        },
+        "external_context_id": {
+          "$ref": "#/$defs/id"
+        },
+        "external_profile_id": {
+          "$ref": "#/$defs/id"
+        },
+        "population_expected": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000000
+        },
+        "valid": {
+          "$ref": "#/$defs/span"
+        },
+        "unit": {
+          "const": "household"
+        },
+        "rate_basis": {
+          "const": "resident_households_year_opening"
+        },
+        "rate_period_years": {
+          "const": 1
+        },
+        "rate_episodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "valid": {
+                "$ref": "#/$defs/span"
+              },
+              "incoming_rate_bps": {
+                "$ref": "#/$defs/bps"
+              },
+              "outgoing_rate_bps": {
+                "$ref": "#/$defs/bps"
+              }
+            },
+            "required": [
+              "valid",
+              "incoming_rate_bps",
+              "outgoing_rate_bps"
+            ]
+          },
+          "minItems": 1
+        },
+        "bridge_plan_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "port_id",
+        "contact_id",
+        "mode",
+        "entry_site_id",
+        "external_context_id",
+        "external_profile_id",
+        "population_expected",
+        "valid",
+        "unit",
+        "rate_basis",
+        "rate_period_years",
+        "rate_episodes",
+        "bridge_plan_id"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "committed_bridge"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "bridge_plan_id": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "bridge_plan_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "occupation_episode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "valid": {
+          "$ref": "#/$defs/span"
+        },
+        "state": {
+          "enum": [
+            "active",
+            "ruined",
+            "abandoned"
+          ]
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "culture_weights": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "activity_weights": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        }
+      },
+      "required": [
+        "valid",
+        "state",
+        "capacity",
+        "culture_weights",
+        "activity_weights"
+      ]
+    },
+    "u64": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "description": "Borne supérieure u64 contrôlée sémantiquement."
+    }
+  }
+}

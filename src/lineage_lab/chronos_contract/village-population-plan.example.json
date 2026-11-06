@@ -1,0 +1,465 @@
+{
+  "schema_version": 1,
+  "plan_id": "pop/demo/domain-0/v1",
+  "canon_id": "canon-social-demo-42",
+  "domain_id": "domain/demo/0",
+  "plan_fingerprint": "example-not-a-computed-fingerprint",
+  "timeline": {
+    "start_year": 1300,
+    "end_year": 1400
+  },
+  "world_seed": "42",
+  "seed": "11040611567489494868",
+  "provider": {
+    "mode": "lineage_hybrid",
+    "algorithm_id": "chronos-cohort-1",
+    "runtime_fingerprint": "example-runtime-to-be-pinned",
+    "compute_threads": 1,
+    "projection_version": "chronos-social-projection-1",
+    "capabilities": [
+      "historical_soft_v1",
+      "candidate_slots_v1",
+      "statistical_reservoir_v1"
+    ]
+  },
+  "catalogue_fingerprints": {
+    "history": "example-history-pack-1",
+    "cultures": "example-culture-pack-fingerprint",
+    "demography": "example-demography-pack-1",
+    "institutions": "example-pecking-order-pack-1"
+  },
+  "demography_society_id": "society/76961583f621dc8d3b654ae522e23b33206501d2002917c36716af3c58029bf7",
+  "resolved_profiles": {
+    "society": {
+      "id": "society/76961583f621dc8d3b654ae522e23b33206501d2002917c36716af3c58029bf7",
+      "schema_id": "chronos-lineage-society-1",
+      "parameters": {
+        "childfree_rate_bps": 300,
+        "marriage_rate_bps": 3000,
+        "founder_match_participation_bps": 8500,
+        "marriage_min_age": 18,
+        "marriage_max_age": 65,
+        "max_age_gap": 18,
+        "divorce_rate_bps": 20,
+        "remarriage_delay_years": 1,
+        "kinship_depth": 3,
+        "matching_attempts": 12,
+        "status_affinity_bps": 8000,
+        "status_inheritance_bps": 9000,
+        "activity_inheritance_bps": 8000,
+        "migration_rate_bps": 60,
+        "dependent_age": 18,
+        "residence": "either",
+        "distance_scale_mm": 25000000,
+        "marriage_radius_mm": 60000000,
+        "migration_radius_mm": 100000000,
+        "max_neighbors": 12,
+        "local_marriage_weight": 4,
+        "capacity_growth_ppm": 2000
+      },
+      "status_weights": {
+        "commoner": 7600,
+        "skilled": 1900,
+        "notable": 450,
+        "elite": 50
+      },
+      "core_status_weights": {
+        "commoner": 1200,
+        "skilled": 1800,
+        "notable": 6000,
+        "elite": 1000
+      }
+    },
+    "ancestries": [
+      {
+        "id": "human-example",
+        "reproduction_mode": "biparental",
+        "parameters": {
+          "max_age": 100,
+          "infant_mortality_bps": 1800,
+          "child_mortality_bps": 250,
+          "child_max_age": 14,
+          "adult_mortality_bps": 60,
+          "aging_coefficient_ppm": 80,
+          "aging_exponent_ppm": 95000,
+          "male_mortality_factor_ppm": 1100000,
+          "maternal_mortality_bps": 80,
+          "male_birth_probability_bps": 5120,
+          "female_infertility_rate_bps": 600,
+          "male_infertility_rate_bps": 400,
+          "fertility_peak_bps": 3200,
+          "fertility_peak_age": 27,
+          "fertility_width_years": 10,
+          "fertility_min_age": 18,
+          "fertility_max_age": 45,
+          "birth_spacing_years": 2
+        }
+      }
+    ],
+    "social_classes": [
+      {
+        "id": "commoner",
+        "provider_rank": 0
+      },
+      {
+        "id": "skilled",
+        "provider_rank": 1
+      },
+      {
+        "id": "notable",
+        "provider_rank": 2
+      },
+      {
+        "id": "elite",
+        "provider_rank": 3
+      }
+    ],
+    "external": [
+      {
+        "id": "outside-households-example",
+        "ancestry_weights": {
+          "human-example": 10000
+        },
+        "adult_age_min": 18,
+        "adult_age_max": 50,
+        "household_size_weights": {
+          "2": 5000,
+          "3": 3000,
+          "4": 2000
+        }
+      }
+    ],
+    "kinship": [
+      {
+        "id": "bilateral-example",
+        "mode": "bilateral_projected_v1",
+        "dependent_age": 18,
+        "min_parent_age": 18,
+        "household_model": "resident_partition_v1",
+        "long_lineages_core_only": true,
+        "founder_foster_children_limit": 6
+      }
+    ]
+  },
+  "settlements": [
+    {
+      "site_id": "site/demo/a",
+      "provider_local_id": 0,
+      "coordinate_frame": "demo-local-metric",
+      "x_mm": 0,
+      "y_mm": 0,
+      "foundation_year": 1250,
+      "initial_population": 800,
+      "ancestry_weights": {
+        "human-example": 10000
+      },
+      "history_culture_id": "agrarian_estates/european-organic",
+      "kinship_profile_id": "bilateral-example",
+      "occupation_episodes": [
+        {
+          "valid": {
+            "start_year": 1300,
+            "end_year": 1400
+          },
+          "state": "active",
+          "capacity": 1200,
+          "culture_weights": {
+            "european-organic": 10000
+          },
+          "activity_weights": {
+            "agriculture": 70,
+            "craft": 15,
+            "trade": 10,
+            "services": 5
+          }
+        }
+      ]
+    },
+    {
+      "site_id": "site/demo/b",
+      "provider_local_id": 1,
+      "coordinate_frame": "demo-local-metric",
+      "x_mm": 15000000,
+      "y_mm": 5000000,
+      "foundation_year": 1250,
+      "initial_population": 300,
+      "ancestry_weights": {
+        "human-example": 10000
+      },
+      "history_culture_id": "agrarian_estates/bastide",
+      "kinship_profile_id": "bilateral-example",
+      "occupation_episodes": [
+        {
+          "valid": {
+            "start_year": 1300,
+            "end_year": 1400
+          },
+          "state": "active",
+          "capacity": 500,
+          "culture_weights": {
+            "bastide": 10000
+          },
+          "activity_weights": {
+            "agriculture": 60,
+            "craft": 20,
+            "trade": 15,
+            "services": 5
+          }
+        }
+      ]
+    }
+  ],
+  "baseline_markers": [
+    {
+      "site_id": "site/demo/a",
+      "year": 1300,
+      "population": 800,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1310,
+      "population": 820,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1320,
+      "population": 840,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1330,
+      "population": 860,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1340,
+      "population": 880,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1350,
+      "population": 901,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1360,
+      "population": 921,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1370,
+      "population": 941,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1380,
+      "population": 961,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1390,
+      "population": 981,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/a",
+      "year": 1399,
+      "population": 1000,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1300,
+      "population": 300,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1310,
+      "population": 308,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1320,
+      "population": 316,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1330,
+      "population": 324,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1340,
+      "population": 332,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1350,
+      "population": 340,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1360,
+      "population": 348,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1370,
+      "population": 356,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1380,
+      "population": 364,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1390,
+      "population": 372,
+      "tolerance_bps": 2000
+    },
+    {
+      "site_id": "site/demo/b",
+      "year": 1399,
+      "population": 380,
+      "tolerance_bps": 2000
+    }
+  ],
+  "shocks": [
+    {
+      "source_event_id": "event/demo/plague",
+      "valid": {
+        "start_year": 1354,
+        "end_year": 1357
+      },
+      "site_ids": [
+        "site/demo/a"
+      ],
+      "severity_profile_id": "plague.medium",
+      "recovery_years": 8,
+      "composition": "independent_survival_v1",
+      "effects": {
+        "additional_mortality_bps": 800,
+        "fertility_multiplier_ppm": 700000
+      }
+    }
+  ],
+  "historical_program": [
+    {
+      "op_id": "op/demo/move-1365",
+      "source_event_id": "event/demo/displacement",
+      "kind": "move_households",
+      "year": 1365,
+      "origin_site_id": "site/demo/a",
+      "destination_site_id": "site/demo/b",
+      "destination_port_id": null,
+      "target_households": 3,
+      "precision": "expected"
+    }
+  ],
+  "role_demands": [
+    {
+      "slot_id": "slot/demo/mayors-a",
+      "office_id": "office/demo/mayor-a",
+      "site_id": "site/demo/a",
+      "valid": {
+        "start_year": 1300,
+        "end_year": 1400
+      },
+      "policy": "best_effort",
+      "expected_simultaneous_holders": 1,
+      "min_age": 25,
+      "max_age": 80,
+      "status_ids": [
+        "commoner",
+        "notable"
+      ],
+      "activity_ids": []
+    }
+  ],
+  "fixed_people": [],
+  "exact_constraints": [],
+  "boundary_ports": [
+    {
+      "port_id": "port/demo/north",
+      "contact_id": "contact/demo/north",
+      "mode": "statistical_reservoir",
+      "entry_site_id": "site/demo/a",
+      "external_context_id": "outside/demo/north",
+      "external_profile_id": "outside-households-example",
+      "population_expected": 10000,
+      "valid": {
+        "start_year": 1300,
+        "end_year": 1400
+      },
+      "unit": "household",
+      "rate_basis": "resident_households_year_opening",
+      "rate_period_years": 1,
+      "rate_episodes": [
+        {
+          "valid": {
+            "start_year": 1300,
+            "end_year": 1400
+          },
+          "incoming_rate_bps": 10,
+          "outgoing_rate_bps": 10
+        }
+      ],
+      "bridge_plan_id": null
+    }
+  ],
+  "limits": {
+    "core_target_share_bps": 500,
+    "core_max_share_bps": 1000,
+    "max_core_living": 200,
+    "max_core_historical": 2000,
+    "max_cohorts": 20000,
+    "max_attempts": 4,
+    "max_projection_ancestors": 2,
+    "max_projection_descendants": 5,
+    "max_candidate_slots": 250000,
+    "max_halo_contacts": 16,
+    "max_result_bytes": 536870912
+  },
+  "regulation": {
+    "mode": "baseline_rebased_v1",
+    "min_fertility_multiplier_ppm": 250000,
+    "max_fertility_multiplier_ppm": 4000000,
+    "max_birth_probability_bps": 8500,
+    "response_years": 3,
+    "paused_during_shock_and_recovery": true
+  },
+  "core_policy": "free_try3_then_projected",
+  "mobility_edges": [
+    {
+      "edge_id": "edge/demo/ab",
+      "from_site_id": "site/demo/a",
+      "to_site_id": "site/demo/b",
+      "valid": {
+        "start_year": 1300,
+        "end_year": 1400
+      },
+      "travel_days": 1,
+      "bidirectional": true,
+      "mode": "land"
+    }
+  ]
+}

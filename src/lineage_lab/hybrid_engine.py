@@ -11,6 +11,7 @@ import numpy as np
 
 from .cohorts import Cohorts
 from .config import Scenario, virtual_map
+from .historical_program import CoreBudgetExceeded, ProviderError
 from .memory import CENSUS_FIELDS, MemoryArchive
 from .politics import PoliticalTimeline
 from .projection import PROJECTION_VERSION, canonical, derive_seed, pack_arrays, uniforms
@@ -99,13 +100,21 @@ class HybridEngine:
         indices = np.arange(len(background.records))
         state = background.initial(indices)
         survival = np.ones((len(indices), 2))
+        initial_deaths = 0
+        if config.historical:
+            before = state.copy()
+            state = background.initial_program(indices, state, survival)
+            initial_deaths = int(before[:, :2].sum() - state[:, :2].sum())
         history, maps, races, groups, annual = [], {}, {}, {}, []
+        integrated_censuses = []
         births_ever = config.initial_population
         coverage, pending = [], np.zeros(14, dtype=np.int64)
         core_n = core.n if core else 0
         for t in range(config.duration + 1):
             year = config.start_year + t
             births = deaths = marriages = divorces = infants = 0
+            if not t:
+                deaths = initial_deaths
             if t:
                 indices = np.arange(len(background.records))
                 before = state.copy()
@@ -116,6 +125,8 @@ class HybridEngine:
                         config.regulation_max_fertility_factor,
                         1 + shortage / max(1, floor) * config.regulation_response_years,
                     )
+                if config.historical:
+                    background.record_site_pressure(year, before)
                 _, _, counts = background.bounds(indices, year, before)
                 births = int(counts.sum())
                 total = len(places) * len(config.races)
@@ -166,14 +177,73 @@ class HybridEngine:
                 divorces = int((state[:, 3] - before[:, 3]).sum())
                 if added:
                     infants = int(before[-added:, :2].sum() - state[-added:, :2].sum())
+            if config.historical:
+                columns = background.columns()
+                total_places = len(places)
+                places_index = columns["place_index"]
+                bg_population = np.bincount(
+                    places_index, weights=state[:, :2].sum(axis=1), minlength=total_places
+                ).astype(np.int64)
+                bg_deaths = np.bincount(
+                    places_index,
+                    weights=before[:, :2].sum(axis=1) - state[:, :2].sum(axis=1),
+                    minlength=total_places,
+                ).astype(np.int64)
+                bg_births = (
+                    np.bincount(
+                        places_index,
+                        weights=columns["counts"].sum(axis=1) * (columns["birth"] == year),
+                        minlength=total_places,
+                    ).astype(np.int64)
+                    if t
+                    else np.zeros(total_places, np.int64)
+                )
+                core_population = {int(p): int(n) for _, p, n in core.maps[year]} if core else {}
+                for slot, place in enumerate(places):
+                    births_here = deaths_here = 0
+                    if core:
+                        d = core.data
+                        births_here = (
+                            int(((d["birth"] == year) & (d["birth_place"] == place.id)).sum())
+                            if t
+                            else 0
+                        )
+                        deaths_here = int(
+                            ((d["death"] == year) & (d["death_place"] == place.id)).sum()
+                        )
+                    simulated = core_population.get(place.id, 0)
+                    integrated_censuses.append(
+                        {
+                            "local_id": place.id,
+                            "year": year,
+                            "population": simulated + int(bg_population[slot]),
+                            "simulated": simulated,
+                            "projected": int(bg_population[slot]),
+                            "births": births_here + int(bg_births[slot]),
+                            "deaths": deaths_here + int(bg_deaths[slot]),
+                        }
+                    )
             population = int(state[:, :2].sum()) + core_rows[t][1]
             births_ever += births + core_rows[t][2]
             core_ever = core_size + sum(r[2] for r in core_rows[: t + 1])
             live_cap = math.floor(population * config.hybrid.core_max_share)
             history_cap = math.floor(births_ever * config.hybrid.core_historical_max_share)
             if core_rows[t][1] > live_cap or core_ever > history_cap:
+                if config.historical:
+                    raise CoreBudgetExceeded(
+                        "Important core exceeds its annual share budget",
+                        year=year,
+                        constraint="core_max_share_bps",
+                    )
                 raise ValueError(
                     f"Important core exceeds the annual budget in {year}; lower core_target_share"
+                )
+            if config.historical and births_ever > config.historical.limits["max_candidate_slots"]:
+                raise ProviderError(
+                    "BudgetExceeded",
+                    "Candidate slot budget exceeded",
+                    year=year,
+                    constraint="max_candidate_slots",
                 )
             coverage.append(
                 {
@@ -362,6 +432,8 @@ class HybridEngine:
             "groups": groups,
             "flows": {str(row["year"]): core.flows[row["year"]] if core else [] for row in history},
         }
+        if config.historical:
+            payload["integrated_censuses"] = integrated_censuses
         summary["archive_bytes"] = len(canonical(payload).encode())
         archive = HybridArchive(payload, native_core=core)
         archive.summary["total_seconds"] = time.perf_counter() - started
