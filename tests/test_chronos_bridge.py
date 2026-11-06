@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from lineage_lab.chronos_bridge import (
-    PARTIAL_FORMAT,
     PROTOCOL,
     Worker,
     partial_result,
@@ -42,6 +41,7 @@ from lineage_lab.historical_program import (
     apply_initial_program,
     mortality_probability,
 )
+from lineage_lab.population_export import RESULT_FORMAT, validate_population_result
 
 
 @pytest.fixture(scope="module")
@@ -184,7 +184,7 @@ def test_free_empty_core_manifest_describes_actual_variant(worker):
     )
 
 
-def test_required_extinct_core_cannot_publish(worker):
+def test_required_extinct_core_can_publish(worker):
     plan = example(worker.runtime_id)
     plan["core_policy"] = "required_core"
     plan["shocks"][0].update(
@@ -196,9 +196,7 @@ def test_required_extinct_core_cannot_publish(worker):
     response = request(
         worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
     )
-    assert response["error"]["code"] == "PopulationConstraintsUnsatisfied"
-    assert response["error"]["constraint"] == "required_core"
-    assert response["error"]["year"] == 1300
+    assert response["ok"], response
 
 
 @pytest.mark.parametrize("failure", [ValueError, TypeError, KeyError])
@@ -211,7 +209,7 @@ def test_engine_failure_is_not_a_population_constraint(worker, monkeypatch, fail
     def fail(*args):
         raise failure("engine bug")
 
-    monkeypatch.setattr(bridge, "partial_result", fail)
+    monkeypatch.setattr(bridge, "complete_result", fail)
     response = request(
         worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
     )
@@ -488,7 +486,7 @@ def test_runtime_and_payload_reference_are_checked(worker):
     assert request(worker, "query")["error"]["code"] == "UnsupportedCapability"
 
 
-def test_full_example_publishes_atomic_partial_result(worker):
+def test_full_example_publishes_atomic_complete_result(worker):
     plan = example(worker.runtime_id, small=False)
     assert request(worker, "prepare", plan=plan)["ok"]
     result = read_result(
@@ -497,25 +495,25 @@ def test_full_example_publishes_atomic_partial_result(worker):
             worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
         ),
     )
-    assert result["format"] == PARTIAL_FORMAT
-    assert result["result_type"] != "PopulationResult" and result["complete"] is False
+    assert result["format"] == RESULT_FORMAT
+    assert result["result_type"] == "PopulationResult" and result["complete"] is True
     assert len(result["annual_censuses"]) == 200
     assert all(
         row["simulated"] + row["projected"] == row["population"]
         for row in result["annual_censuses"]
     )
-    assert result["diagnostics"]["unexecuted_operation_ids"] == ["op/demo/move-1365"]
-    assert "candidate_tables" in result["diagnostics"]["deferred"]
+    assert validate_population_result(result, plan["limits"])["valid"]
+    assert any(t["operation_id"] == "op/demo/move-1365" for t in result["residence_transfers"])
     assert all("net_internal_migration" not in row for row in result["annual_censuses"])
     previous = sum(s["initial_population"] for s in plan["settlements"])
     for year in range(1300, 1400):
         rows = [r for r in result["annual_censuses"] if r["year"] == year]
         population = sum(r["population"] for r in rows)
-        assert population == previous + sum(r["births"] - r["deaths"] for r in rows)
+        assert population == previous + sum(r["births"] - r["deaths"] + r["incoming"] - r["outgoing"] for r in rows)
         previous = population
     assert "seconds" not in json.dumps(result)
     assert str(worker.job_root) not in json.dumps(result)
-    assert set(result["provider_manifest"]["capabilities"]) == {"historical_soft_v1"}
+    assert set(result["provider_manifest"]["capabilities"]) == set(plan["provider"]["capabilities"])
 
 
 @pytest.mark.parametrize(
@@ -545,12 +543,12 @@ def test_publication_failure_has_no_canonical_result(worker, monkeypatch):
 
     monkeypatch.setattr(os, "replace", fail_replace)
     directories = set(worker.job_root.glob("job-*"))
-    previous = set(worker.job_root.rglob("population-partial.json"))
+    previous = set(worker.job_root.rglob("population-result.json"))
     response = request(
         worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
     )
     assert not response["ok"]
-    assert set(worker.job_root.rglob("population-partial.json")) == previous
+    assert set(worker.job_root.rglob("population-result.json")) == previous
     assert not list(worker.job_root.rglob("*.partial"))
     assert set(worker.job_root.glob("job-*")) == directories
 
@@ -792,9 +790,10 @@ def test_extinct_core_is_a_valid_result_and_required_core_never_projects(worker)
     plan["core_policy"] = "required_core"
     plan["limits"]["max_attempts"] = 8
     calls.clear()
-    with pytest.raises(ProviderError, match="empty or extinct") as error:
-        select_core_variant(plan, translate_plan(plan), success)
-    assert error.value.code == "PopulationConstraintsUnsatisfied"
+    assert select_core_variant(plan, translate_plan(plan), success)[0].summary[
+        "core_founders_simulated"
+    ] == 2
+    assert len(calls) == 1
     calls.clear()
 
     def fail(candidate):
@@ -904,6 +903,46 @@ def test_malformed_json_does_not_kill_worker(tmp_path):
     assert all(r["error"]["code"] == "PopulationConstraintsUnsatisfied" for r in responses)
 
 
+def test_invalid_utf8_and_surrogate_preserve_prepared_plans(worker, tmp_path):
+    plan = example(worker.runtime_id)
+    requests = [
+        {"protocol": PROTOCOL, "request_id": "p", "method": "prepare", "plan": plan},
+        {"protocol": PROTOCOL, "request_id": "\ud800", "method": "materialize",
+         "plan_id": plan["plan_id"], "payload_ref": plan["plan_fingerprint"]},
+        {"protocol": PROTOCOL, "request_id": "m", "method": "materialize",
+         "plan_id": plan["plan_id"], "payload_ref": plan["plan_fingerprint"]},
+    ]
+    wire = [json.dumps(r).encode() for r in requests]
+    wire.insert(1, b'\xff')
+    result = subprocess.run(
+        [sys.executable, "-m", "lineage_lab.chronos_bridge", "--job-root", str(tmp_path)],
+        input=b'\n'.join(wire) + b'\n', capture_output=True, timeout=120, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    responses = [json.loads(line) for line in result.stdout.splitlines()]
+    assert [r["ok"] for r in responses] == [True, False, False, True]
+    assert all(responses[i]["error"]["code"] == "PopulationConstraintsUnsatisfied"
+               for i in (1, 2))
+
+
+@pytest.mark.parametrize("bad_id", [[], {}, 42, None, True])
+def test_materialize_plan_id_type_is_validation(worker, bad_id):
+    response = request(worker, "materialize", plan_id=bad_id)
+    assert response["error"]["code"] == "PopulationConstraintsUnsatisfied"
+
+
+def test_initial_effects_without_consequence_judges_composition(worker):
+    plan = example(worker.runtime_id)
+    first = plan["shocks"][0]
+    first.update(valid={"start_year": 1300, "end_year": 1301},
+                 effects={"mortality_multiplier_ppm": 4000000})
+    second = copy.deepcopy(first)
+    second.update(source_event_id="event/cancel", effects={"mortality_multiplier_ppm": 250000})
+    plan["shocks"].append(second)
+    result = partial_result(seal(plan), translate_plan(plan))
+    assert result["diagnostics"]["initial_delta"]["effects_without_consequence"] == []
+
+
 def test_capacity_history_reconstructs_without_query_dependent_births(worker):
     from lineage_lab.hybrid_engine import HybridEngine
 
@@ -986,10 +1025,10 @@ def test_cohort_and_result_budgets_do_not_trigger_core_fallback(worker):
     plan = example(worker.runtime_id)
     plan["limits"]["max_result_bytes"] = 1
     assert request(worker, "prepare", plan=seal(plan))["ok"]
-    previous = set(worker.job_root.rglob("population-partial.json"))
+    previous = set(worker.job_root.rglob("population-result.json"))
     response = request(
         worker, "materialize", plan_id=plan["plan_id"], payload_ref=plan["plan_fingerprint"]
     )
     assert response["error"]["code"] == "BudgetExceeded"
     assert response["error"]["constraint"] == "max_result_bytes"
-    assert set(worker.job_root.rglob("population-partial.json")) == previous
+    assert set(worker.job_root.rglob("population-result.json")) == previous

@@ -347,6 +347,15 @@ class HistoricalSettings(Settings):
     mobility_edges: list[dict] = Field(default_factory=list)
     occupation_episodes: dict[int, list[dict]] = Field(default_factory=dict)
     limits: dict[str, int] = Field(default_factory=dict)
+    registry_version: str | None = None
+    domain_id: str = ""
+    site_ids: dict[int, str] = Field(default_factory=dict)
+    kinship_by_site: dict[int, str] = Field(default_factory=dict)
+    historical_program: list[dict] = Field(default_factory=list)
+    boundary_ports: list[dict] = Field(default_factory=list)
+    external_profiles: list[dict] = Field(default_factory=list)
+    shocks: list[dict] = Field(default_factory=list)
+    regulation: dict = Field(default_factory=dict)
 
 
 class Scenario(Settings):

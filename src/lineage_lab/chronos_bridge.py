@@ -1,6 +1,6 @@
 """Local Chronos JSONL worker: python -m lineage_lab.chronos_bridge --job-root DIR.
 
-The stage-1 artifact is explicitly partial, never a complete PopulationResult.
+Materialize publishes the complete, independently validated S3 PopulationResult.
 stdout is reserved for protocol envelopes; provider output and logs use stderr.
 """
 
@@ -143,21 +143,12 @@ def select_core_variant(plan, config, run=None):
                 raise
         else:
             has_core = archive.summary["core_founders_simulated"] > 0
-            if not free and (
-                not has_core or any(r["core_alive"] == 0 for r in archive.summary["core_coverage"])
-            ):
+            if not free and not has_core:
                 raise ProviderError(
                     "PopulationConstraintsUnsatisfied",
-                    "Required core is empty or extinct within the public timeline",
+                    "Required core has no founders",
                     constraint="required_core",
-                    year=next(
-                        (
-                            r["year"]
-                            for r in archive.summary["core_coverage"]
-                            if r["core_alive"] == 0
-                        ),
-                        plan["timeline"]["start_year"],
-                    ),
+                    year=plan["timeline"]["start_year"],
                 )
             attempts.append({"index": index, "outcome": "selected", "seed": str(candidate.seed)})
             return (
@@ -175,6 +166,35 @@ def select_core_variant(plan, config, run=None):
         constraint="core_policy",
         plan_id=plan["plan_id"],
     )
+
+
+def initial_effects_without_consequence(plan):
+    """Report only ineffective composed bootstrap effects, per exposed site."""
+    from fractions import Fraction
+
+    year = plan["timeline"]["start_year"]
+    active = [s for s in plan["shocks"]
+              if s["valid"]["start_year"] <= year < s["valid"]["end_year"]]
+    output = []
+    for shock in active:
+        if shock["valid"]["end_year"] != year + 1:
+            continue
+        for site in sorted(shock["site_ids"]):
+            effects = {}
+            for key, value in shock["effects"].items():
+                if not key.endswith("_multiplier_ppm"):
+                    continue
+                composed = Fraction(1)
+                for other in active:
+                    if site in other["site_ids"]:
+                        composed *= Fraction(other["effects"].get(key, 1000000), 1000000)
+                ineffective = composed < 1 if key == "mortality_multiplier_ppm" else composed != 1
+                if ineffective and value != 1000000:
+                    effects[key] = value
+            if effects:
+                output.append({"source_event_id": shock["source_event_id"], "site_ids": [site],
+                               "effects": effects, "reason": "initial_only; no_annual_transition"})
+    return sorted(output, key=lambda r: (r["source_event_id"].encode(), r["site_ids"]))
 
 
 def partial_result(plan, config):
@@ -203,34 +223,7 @@ def partial_result(plan, config):
     runtime = runtime_manifest()
     first_year = plan["timeline"]["start_year"]
     first = next(r for r in archive._payload["history"] if r["year"] == first_year)
-    without_consequence = []
-    for shock in plan["shocks"]:
-        if shock["valid"] != {"start_year": first_year, "end_year": first_year + 1}:
-            continue
-        effects = {
-            key: value
-            for key, value in shock["effects"].items()
-            if (
-                key
-                in {
-                    "fertility_multiplier_ppm",
-                    "capacity_multiplier_ppm",
-                    "migration_multiplier_ppm",
-                }
-                and value != 1000000
-            )
-            or (key == "mortality_multiplier_ppm" and value < 1000000)
-        }
-        if effects:
-            without_consequence.append(
-                {
-                    "source_event_id": shock["source_event_id"],
-                    "site_ids": shock["site_ids"],
-                    "effects": effects,
-                    "reason": "initial_only; no_annual_transition",
-                }
-            )
-    without_consequence.sort(key=lambda row: row["source_event_id"].encode("utf-8"))
+    without_consequence = initial_effects_without_consequence(plan)
     lineage_scope = (
         "projected_only; no_simulated_lineages; background_parentage_is_projected; "
         "bounded_by_provider_coverage_and_projection_depth; no_long_hereditary_lineages"
@@ -318,6 +311,52 @@ def result_path(job_directory, relative_path):
     return target
 
 
+def complete_result(plan, config):
+    from .integrated_population import IntegratedPopulation
+    from .population_export import RESULT_FORMAT, validate_population_result
+    from .registry_contract import (
+        FERTILITY_VERSION,
+        MORTALITY_VERSION,
+        REGISTRY_VERSION,
+        REGULATOR_VERSION,
+    )
+
+    archive, selected, policy = select_core_variant(
+        plan, config, run=lambda candidate: IntegratedPopulation(candidate).run()
+    )
+    runtime = runtime_manifest()
+    first_year = plan["timeline"]["start_year"]
+    first = [r for r in archive.censuses if r["year"] == first_year]
+    result = {"format": RESULT_FORMAT, "result_type": "PopulationResult", "complete": True,
+              "coverage": "complete", "stage": "S3-step-2", "plan_id": plan["plan_id"],
+              "plan_fingerprint": plan["plan_fingerprint"], "timeline": plan["timeline"],
+              "provider_manifest": {
+                  "algorithm_id": plan["provider"]["algorithm_id"],
+                  "projection_version": plan["provider"]["projection_version"],
+                  "registry_version": REGISTRY_VERSION, "mortality_rule_version": MORTALITY_VERSION,
+                  "fertility_rule_version": FERTILITY_VERSION, "regulator_version": REGULATOR_VERSION,
+                  "runtime": runtime, "runtime_fingerprint": fingerprint(runtime),
+                  "core_selection": policy, "capabilities": sorted(plan["provider"]["capabilities"]),
+                  "input_profiles": plan["resolved_profiles"],
+                  "catalogue_fingerprints": plan["catalogue_fingerprints"],
+                  "external_reference_validation": "host_owned",
+                  "selected_seed": str(selected.seed), "core_stream": "independent_precomputed"},
+              **archive.tables(), "annual_censuses": archive.censuses,
+              "cohort_residence_counts": archive.cohort_counts,
+              "diagnostics": {**archive.diagnostics(), "lineage_scope":
+                              "simulated_core_only; background_parentage_is_projected" if
+                              policy["variant"] == "target_core" else
+                              "projected_only; no_simulated_lineages; no_long_hereditary_lineages",
+                              "initial_delta": {"year": first_year, "births": 0,
+                                                "deaths": sum(r["deaths"] for r in first),
+                                                "pre_shock_population": config.initial_population,
+                                                "population": sum(r["population"] for r in first),
+                                                "effects_without_consequence": initial_effects_without_consequence(plan)}}}
+    result["validation_proof"] = validate_population_result(result, plan["limits"])
+    result["result_fingerprint"] = fingerprint(result)
+    return result
+
+
 class Worker:
     def __init__(self, job_root):
         self.job_root = Path(job_root).resolve()
@@ -327,6 +366,7 @@ class Worker:
         self._lock = threading.Lock()
 
     def prepare(self, plan):
+        from .population_export import RESULT_FORMAT
         # Defensive copy: callers cannot mutate a prepared job behind its fingerprint.
         plan = json.loads(canonical_bytes(plan))
         validate_plan(plan, self.runtime_id)
@@ -336,11 +376,17 @@ class Worker:
             "plan_id": plan["plan_id"],
             "payload_ref": plan["plan_fingerprint"],
             "runtime_fingerprint": self.runtime_id,
-            "result_coverage": "partial",
-            "result_format": PARTIAL_FORMAT,
+            "result_coverage": "complete",
+            "result_format": RESULT_FORMAT,
         }
 
     def materialize(self, plan_id, payload_ref):
+        from .population_export import RESULT_FORMAT
+        if type(plan_id) is not str or not plan_id:
+            raise ProviderError(
+                "PopulationConstraintsUnsatisfied", "A nonempty plan_id is required",
+                constraint="plan_id",
+            )
         if plan_id not in self.prepared:
             raise ProviderError(
                 "PopulationConstraintsUnsatisfied",
@@ -362,7 +408,7 @@ class Worker:
         random.seed(int(plan["seed"]))
         np.random.seed(int(plan["seed"]) % 2**32)
         numba.set_num_threads(1)
-        result = partial_result(plan, config)
+        result = complete_result(plan, config)
         content = canonical_bytes(result)
         if len(content) > plan["limits"]["max_result_bytes"]:
             raise ProviderError(
@@ -373,8 +419,8 @@ class Worker:
 
         self.job_root.mkdir(parents=True, exist_ok=True)
         directory = Path(tempfile.mkdtemp(prefix="job-", dir=self.job_root))
-        target = result_path(directory, "population-partial.json")
-        staging = result_path(directory, "population-partial.json.partial")
+        target = result_path(directory, "population-result.json")
+        staging = result_path(directory, "population-result.json.partial")
         try:
             with staging.open("xb") as stream:
                 stream.write(content)
@@ -393,9 +439,11 @@ class Worker:
                 "relative_path": target.relative_to(directory).as_posix(),
                 "file_sha256": hashlib.sha256(content).hexdigest(),
                 "bytes": len(content),
-                "format": PARTIAL_FORMAT,
+                "format": RESULT_FORMAT,
             },
-            "metrics": {"materialize_seconds": time.perf_counter() - started},
+            "metrics": {"materialize_seconds": time.perf_counter() - started,
+                        "candidate_slots": len(result["candidate_table"]["origin_id"]),
+                        "core_selection": result["provider_manifest"]["core_selection"]},
         }
 
     def handle(self, request):
@@ -416,6 +464,14 @@ class Worker:
                 raise ProviderError(
                     "PopulationConstraintsUnsatisfied", "A nonempty request_id is required"
                 )
+            try:
+                request_id.encode("utf-8")
+            except UnicodeError:
+                response["request_id"] = None
+                raise ProviderError(
+                    "PopulationConstraintsUnsatisfied", "request_id must be valid UTF-8",
+                    constraint="request_id",
+                ) from None
             if not self._lock.acquire(blocking=False):
                 raise ProviderError("ProviderUnavailable", "Worker is already running a job")
             try:
@@ -474,10 +530,9 @@ class Worker:
 def main(argv=None):
     # The wire format is strict UTF-8, including on Windows with a legacy locale
     # or PYTHONIOENCODING override. Parent-process pipe settings do not control it.
-    sys.stdin.reconfigure(encoding="utf-8", errors="strict")
     sys.stdout.reconfigure(encoding="utf-8", errors="strict")
     parser = argparse.ArgumentParser(
-        description="Chronos local population worker (partial S3 step 1)"
+        description="Chronos local population worker (complete S3 registry)"
     )
     parser.add_argument("--job-root", type=Path, help="Private output root owned by the host")
     parser.add_argument(
@@ -499,8 +554,9 @@ def main(argv=None):
 
     with redirect_stdout(sys.stderr):
         worker = Worker(args.job_root)
-    for line in sys.stdin:
+    for raw_line in sys.stdin.buffer:
         try:
+            line = raw_line.decode("utf-8", errors="strict")
 
             def unique_pairs(pairs):
                 result = {}
@@ -525,7 +581,8 @@ def main(argv=None):
         else:
             with redirect_stdout(sys.stderr):
                 response = worker.handle(request)
-        print(json.dumps(response, ensure_ascii=False, separators=(",", ":")), flush=True)
+        # ASCII escaping here also protects error envelopes echoing malformed IDs.
+        print(json.dumps(response, ensure_ascii=True, separators=(",", ":")), flush=True)
     return 0
 
 

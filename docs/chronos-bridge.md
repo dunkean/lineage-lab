@@ -1,4 +1,152 @@
-# Chronos bridge, S3 step 1
+# Chronos bridge, complete S3 registry
+
+`Worker.materialize` now publishes **`population-result-json-1`**, with
+`result_type="PopulationResult"`, `complete=true`, and independently checked
+exported tables. The protocol remains `chronos-lineage-1`; `prepare` announces
+complete coverage. Publication is atomic as `population-result.json`. Runtime
+and result fingerprints must be repinned; the bundled input schema/example and
+requirements lock have not changed. The stage-1 notes below are historical
+implementation records, not the current worker's result contract.
+
+## Complete result and Rust integration
+
+The top-level tables are:
+
+- `candidate_table`: columns sorted by `origin_id` UTF-8 bytes. `source` is
+  `simulated` or `projected`; ancestry, sealed origin/sex ordinal, original
+  `family_key`, birth/death facts, coverage, departure facts, parent references,
+  reproductive exclusions and established core attributes are explicit.
+- `origin_cohorts`: immutable sealed origin-sex universes, including arrivals.
+- `residence_index` and `residence_offsets`: episodes sorted by candidate row,
+  year and phase; offsets have `candidate_slots + 1` entries.
+- `household_episodes`, `union_allocations`, `guardian_assignments`:
+  resident membership and union intervals, formation sources, declared founder
+  custody and synthetic care, without invented founder biological parentage.
+- `birth_allocations`, `death_allocations`, `parentage`, `children_index`:
+  reciprocal links; a birth names its original parental union and child origin
+  ordinal, regardless of where the mother moved.
+- `residence_transfers`: one frozen member list per actual household move, with
+  its operation or statistical port. Local endpoints represent the same event.
+  Statistical arrivals have no named reservoir person or bridge identity.
+- `annual_censuses` and `cohort_residence_counts`: all public years, counts by
+  site/component and sparse origin/current-site/sex counts.
+- `diagnostics` and `validation_proof`: exact controller ratios, migration
+  realizations, core attempts/coverage, partnership exposure, bounded lineage
+  scope, and independent validation results.
+
+Person references are **zero-based rows in the canonical candidate table**,
+with JSON null for unknown references. Public identity is a lossless JSON-array
+address encoded as a string, never a table position or a hash. Row numbers may
+change when composing an export; identities, family keys and links do not.
+
+Intervals compare `(year, phase)` lexicographically. The ordinary half-open
+annual `valid` fields are supplemented by `start_phase` and `end_phase`.
+A coverage end uses phase 0. Do not discard equal-year birth/death intervals or
+visits: phase 20 birth precedes phase 30 death and phase 40 movement. Annual
+censuses observe phase 80. `departed_external` closes local coverage, preserves
+identity, and leaves subsequent death unknown. A widow's household ID survives
+membership-episode closure. Synthetic care is stationary.
+
+Rust should verify the file SHA-256 and byte size, then the result fingerprint
+(the canonical object excluding `result_fingerprint`), and independently check
+the tables before assigning social attributes or offices. The Python validator
+is exposed as `population_export.validate_population_result(result, limits)`;
+it recomputes balances, sparse counts, reciprocal family references, residence
+and household membership from exported facts, without simulation counters.
+`validation_proof` is evidence of that executed check, not permission for the
+host to skip its own validation. Metrics are outside canonical content.
+
+## Execution and versions
+
+`IntegratedPopulation` is the production integrated entry point. The standalone
+full and lazy hybrid implementations, including their seeded golden histories,
+remain unchanged. `partial_result` retains the stage-1 diagnostic path for
+regression comparison; it is not used by the worker and does not provide the
+registry contract.
+
+The integrated implementation separates immutable slot/residence storage
+(`cohort_residence.py`), projected transitions (`registry_demography.py`), core
+precomputation/tape (`integrated_core.py`), movement (`registry_mobility.py`),
+exact site regulation (`site_regulation.py`), and export/validation
+(`population_export.py`). Translation retains operations, statistical ports,
+inline kinship/site profiles, graph mode/edge identity, recovery metadata and
+regulator settings. There is no Chronos repository import or new dependency.
+
+The manifest declares `chronos-resident-registry-1`,
+`chronos-annual-present-mortality-2`, `chronos-successful-birth-spacing-1` and
+`chronos-residual-rational-1`. Annual projected death quotas use current present
+homogeneous groups, stochastic `floor(N*p+u)` rounding, and a year-keyed uint64
+bijection of immutable sex ordinals, selected with serial fixed-width radix
+passes. Maternal risk applies only to actual mothers. Core demographic facts
+remain Engine facts, with integrated household commits and a phase-stamped
+birth/death/union/household/transfer tape.
+
+Projected births use active co-resident unions from the preceding publication,
+per-ancestry successful-birth spacing, actual parental slots and the mother's
+current site. No union or birth is created to repair a demographic target.
+The regulator uses exact fractions and half-up ppm quantization. It observes
+only the previous publication; suspends through `end_year + recovery_years`
+inclusive; and rebases after that year's transfers. A zero baseline remains
+neutral until its first positive phase-80 anchor. Migration is incorporated
+once through signed `M` and `M_ref`, including core transfers. Saturation,
+negative raw guides, core above guide and unavailable fertility remain visible.
+
+Only `CoreBudgetExceeded` advances a core attempt. An extinct compliant
+`required_core` is accepted; only a core without any founders is refused.
+Malformed UTF-8 lines, isolated-surrogate request IDs and ill-typed materialize
+plan IDs return validation envelopes without destroying prepared plans.
+Bootstrap diagnostics judge composed effects, including mutually cancelling
+mortality multipliers.
+
+## Explicit implementation choices and measured limitations
+
+Founder dependants are ordered by birth year then semantic ID. Compatible
+households use least load then semantic household ID; every age-compatible
+adult in the chosen household is a declared guardian. Foster limits are per
+household and taken from the site's inline profile. No later foster adoption
+is invented. Incoming statistical household sizes/ancestries use inline weights;
+up to two adults have uniform ages in the declared range and form one opposite-
+sex union; remaining members are dependants with unknown biological parents and
+explicit guardians. No exterior marriage is simulated. These are construction
+choices where the input profile does not provide a complete individual model.
+
+There are no annual births, ordinary migration or rate-port transitions at the
+initial boundary: only founder construction, the composed initial shock delta,
+marriage relocations and explicitly dated operations. Ordinary projected
+migration uses the resolved cultural rate once, historical modifiers, opening
+household denominators and carried fractional remainders. Unserved integer
+demand is diagnostic, not perpetual debt. Incoming and marriage households
+cannot move again in the phase.
+
+Slots and scan/grouping/death-order kernels use NumPy/int32 and serial Numba.
+Household structural bookkeeping remains Python. Bootstrap least-load selection
+and semantic export ordering use heaps/comparison sorting, adding `O(L log L)`
+and `O(E log E)` terms; this is **not** a claim of strict linear total work.
+Storage is slots plus emitted episodes/events, without a person-by-year matrix.
+The result-file byte budget is distinct from process working set/private commit;
+the measurement tool reports both, and does not claim a 512 MiB RAM guarantee.
+
+Reproduce measurements with the prescribed Python and `PYTHONPATH=src`:
+
+```powershell
+python tools/measure_chronos_core.py --mode probe --output output/s3-fertility-probe.json
+python tools/measure_chronos_core.py --mode audit --output output/s3-seed-audit.json
+python tools/measure_chronos_core.py --mode benchmark --example --output output/s3-example-benchmark.json
+python tools/measure_chronos_core.py --mode benchmark --sites 32 --output output/s3-maximum-32-benchmark.json
+```
+
+Use a fresh workspace-local `NUMBA_CACHE_DIR` for cold JIT measurements. Benchmarks
+include simulation, validation, canonical serialization and atomic publication;
+worker startup and prepare are excluded. The audit registers seeds 1–20, 42 and
+11040611567489494868, compares regulation disabled/enabled, reports attempted-
+core extinction separately from budget rejection/fallback, complete annual
+trajectories and controller saturation. Observed net reproduction counts girls
+born early enough for their entire fertility window and their latest daughter's
+adulthood to be observable. External coverage losses make its reported NRR a
+lower bound; censoring counts are explicit. No template has been recalibrated.
+
+# Historical stage-1 notes
+
 
 Run the local worker with the pinned environment:
 
@@ -124,8 +272,9 @@ Choices where the design leaves a stage-1 detail open:
 exception advances this policy. Slot/cohort/result-byte/memory failures and
 unsupported biology do not activate it. An extinct compliant core is accepted.
 `required_core` allows the declared attempt count, at most eight, with no
-zero-share fallback. An empty or extinct core in this policy raises
-`PopulationConstraintsUnsatisfied` before publication; an empty founder count
+zero-share fallback. A core with no founders in this policy raises
+`PopulationConstraintsUnsatisfied` before publication; extinction within budget is
+accepted on the first successful attempt. An empty founder count
 is not advertised as `target_core`. Free empty variants declare `projected_only`
 and explicitly exclude simulated and long hereditary lineages in `lineage_scope`.
 This scope is bounded by provider coverage and the declared projection depths.

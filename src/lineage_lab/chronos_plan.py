@@ -499,6 +499,15 @@ def translate_plan(plan):
             "promotion_rules": [],
         },
         "historical": {
+            "registry_version": "chronos-resident-registry-1",
+            "domain_id": plan["domain_id"],
+            "site_ids": {s["provider_local_id"]: s["site_id"] for s in sites},
+            "kinship_by_site": {s["provider_local_id"]: s["kinship_profile_id"] for s in sites},
+            "historical_program": plan["historical_program"],
+            "boundary_ports": plan["boundary_ports"],
+            "external_profiles": profiles["external"],
+            "shocks": plan["shocks"],
+            "regulation": plan["regulation"],
             "events": events,
             "baseline_markers": plan["baseline_markers"],
             "kinship_profiles": profiles["kinship"],
@@ -508,6 +517,8 @@ def translate_plan(plan):
             },
             "mobility_edges": [
                 {
+                    "edge_id": e["edge_id"],
+                    "mode": e["mode"],
                     "from": local_ids[e["from_site_id"]],
                     "to": local_ids[e["to_site_id"]],
                     **{k: e[k] for k in ("valid", "travel_days", "bidirectional")},
