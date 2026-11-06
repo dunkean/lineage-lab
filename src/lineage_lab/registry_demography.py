@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
-from itertools import pairwise
 
 import numpy as np
 
 from .cohorts import Cohorts
 from .engine import mortality_table, scaled_probability
 from .historical_program import HistoricalProgram, mortality_probability
-from .registry_contract import MORTALITY_VERSION, stream
+from .registry_contract import MORTALITY_VERSION, encoded, key_prefix, opening_draws, stream
 from .registry_kernels import annual_ranks, radix_order
 
 
@@ -28,6 +28,25 @@ class RegistryDemography:
             "separated_potential_pair_years": 0,
             "births": 0,
         }
+        # Pure scalar results, kept so that equal inputs run the same NumPy call once.
+        self.mortality_tables, self.mortality_memo = {}, {}
+        self.site_keys = [encoded(site) for site in registry.site_ids]
+        self.cohort_keys = {}
+        self.key_prefix = key_prefix(self.config.seed)
+        self.mortality_prefix = self.key_prefix + encoded(MORTALITY_VERSION) + b","
+
+    def mortality(self, demo, sex, age, factor, extra, initial):
+        key = (id(demo), sex, min(age, demo.max_age), factor, extra, initial)
+        probability = self.mortality_memo.get(key)
+        if probability is None:
+            table = self.mortality_tables.get(id(demo))
+            if table is None:
+                table = self.mortality_tables[id(demo)] = mortality_table(demo)
+            base = table[min(age, demo.max_age)]
+            base = min(1, base * (demo.male_mortality_factor if sex == 0 else 1))
+            probability = float(mortality_probability(base, factor, extra, initial=initial))
+            self.mortality_memo[key] = probability
+        return probability
 
     def traits(self, rows):
         r, d = self.registry, self.registry.data
@@ -74,56 +93,72 @@ class RegistryDemography:
         cap = self.config.historical.regulation["max_birth_probability_bps"] / 10000
         allocations = defaultdict(list)
         mothers = []
-        eligible_by_site = np.zeros(len(r.places), np.int64)
-        for pair in r.pairs:
+        eligible_by_site = [0] * len(r.places)
+        site_of, sex_of, race_of, birth_of, flags_of = (
+            d[field][: r.n].tolist() for field in ("site", "sex", "race", "birth", "flags")
+        )
+        scale = (factors[2] * pressure).tolist()
+        multipliers = [ppm / 1000000 for ppm in multiplier_ppm]
+        fertile = {}
+        candidates, keys = [], []
+        birth_key = self.key_prefix + b'"birth",'
+        tail = b",%d]" % r.year
+        for pair in r.open_pairs:
             a, b = pair["a"], pair["b"]
+            state = pair["state"]
             if (
-                pair["state"] == "unformed"
-                and d["site"][a] >= 0
-                and d["site"][b] >= 0
-                and d["site"][a] != d["site"][b]
+                state == "unformed"
+                and site_of[a] >= 0
+                and site_of[b] >= 0
+                and site_of[a] != site_of[b]
             ):
                 self.exposure["separated_potential_pair_years"] += 1
-            if pair["state"] != "active" or pair["formed"] >= r.year:
+            if state != "active" or pair["formed"] >= r.year:
                 continue
-            if d["site"][a] < 0 or d["site"][a] != d["site"][b]:
+            if site_of[a] < 0 or site_of[a] != site_of[b]:
                 continue
             self.exposure["active_pair_years"] += 1
-            mother = b if d["sex"][b] == 1 else a
+            mother = b if sex_of[b] == 1 else a
             father = a if mother == b else b
-            race = int(d["race"][mother])
+            race = race_of[mother]
             demo = demos[race]
-            age = r.year - int(d["birth"][mother])
+            age = r.year - birth_of[mother]
             if (
-                d["flags"][a]
-                or d["flags"][b]
+                flags_of[a]
+                or flags_of[b]
                 or not demo.fertility_min_age <= age <= demo.fertility_max_age
                 or r.year - pair["last_birth"] < demo.birth_spacing
             ):
                 continue
             self.exposure["eligible_pair_years"] += 1
-            site = int(d["site"][mother])
-            base = demo.fertility_peak * np.exp(
-                -0.5 * ((age - demo.fertility_peak_age) / demo.fertility_width) ** 2
-            )
-            probability = float(scaled_probability(base, factors[2][site] * pressure[site]))
+            site = site_of[mother]
+            probability = fertile.get((race, age, site))
+            if probability is None:
+                base = demo.fertility_peak * np.exp(
+                    -0.5 * ((age - demo.fertility_peak_age) / demo.fertility_width) ** 2
+                )
+                probability = float(scaled_probability(base, scale[site]))
+                fertile[race, age, site] = probability
             if probability <= 0:
                 continue
             eligible_by_site[site] += 1
-            multiplier = multiplier_ppm[site] / 1000000
+            multiplier = multipliers[site]
             if multiplier != 1:
                 corrected = probability * multiplier
                 # A cap only limits corrective increases; identity preserves the
                 # entire unregulated probability, even above the corrective cap.
                 probability = min(max(probability, cap), corrected) if multiplier > 1 else corrected
-            if stream(self.config.seed, "birth", pair["key"], r.year).random() >= probability:
-                continue
+            candidates.append((pair, mother, father, race, site, probability))
+            keys.append(birth_key + pair["encoded_key"] + tail)
+        # Keyed draws do not depend on the order they are taken in.
+        draws = opening_draws(keys)[0].tolist()
+        born = [c for c, draw in zip(candidates, draws, strict=True) if draw < c[5]]
+        sex_key = self.key_prefix + b'"birth_sex",'
+        draws = opening_draws([sex_key + c[0]["encoded_key"] + tail for c in born])[0].tolist()
+        for (pair, mother, father, race, site, _), draw in zip(born, draws, strict=True):
             pair["last_birth"] = r.year
             d["last_birth"][mother] = r.year
-            sex = int(
-                stream(self.config.seed, "birth_sex", pair["key"], r.year).random()
-                >= demo.male_birth_probability
-            )
+            sex = int(draw >= demos[race].male_birth_probability)
             allocations[site, race].append((mother, father, pair["key"], sex))
             mothers.append(mother)
         for (site, race), entries in sorted(allocations.items()):
@@ -147,12 +182,13 @@ class RegistryDemography:
         # Commit newborns without applying majorities or union changes before phase 35.
         if mothers:
             membership = defaultdict(list)
-            for row in map(int, r.living()):
-                membership[int(d["household"][row])].append(row)
+            rows = r.living()
+            for row, hh in zip(rows.tolist(), d["household"][rows].tolist(), strict=True):
+                membership[hh].append(row)
             for hh, members in membership.items():
                 if hh >= 0:
                     r._commit_household(hh, tuple(members), r.households[hh]["site"], 20)
-        return np.asarray(mothers, np.int32), eligible_by_site
+        return np.asarray(mothers, np.int32), np.array(eligible_by_site, np.int64)
 
     def deaths(self, mothers=(), *, initial=False):
         r, d = self.registry, self.registry.data
@@ -182,33 +218,48 @@ class RegistryDemography:
         boundaries = np.r_[0, np.flatnonzero(keys[1:] != keys[:-1]) + 1, len(keys)]
         dead = []
         factors = self.program.factors(r.year, [p.id for p in r.places])
-        for left, right in pairwise(boundaries):
-            group = ordered[left:right]
-            sample = int(group[0])
-            site, race, sex, cohort = [int(d[f][sample]) for f in ("site", "race", "sex", "cohort")]
+        mortality, extra = factors[0].tolist(), factors[1].tolist()
+        starts = boundaries[:-1]
+        samples = ordered[starts]
+        expected, keys = [], []
+        for site, race, sex, cohort, birth, exposed, size in zip(
+            d["site"][samples].tolist(),
+            d["race"][samples].tolist(),
+            d["sex"][samples].tolist(),
+            d["cohort"][samples].tolist(),
+            d["birth"][samples].tolist(),
+            maternal[samples].tolist(),
+            np.diff(boundaries).tolist(),
+            strict=True,
+        ):
             demo = demos[race]
-            age = r.year - int(d["birth"][sample])
-            base = mortality_table(demo)[min(age, demo.max_age)]
-            base = min(1, base * (demo.male_mortality_factor if sex == 0 else 1))
-            probability = float(
-                mortality_probability(base, factors[0][site], factors[1][site], initial=initial)
-            )
-            if not initial and maternal[sample]:
+            age = r.year - birth
+            probability = self.mortality(demo, sex, age, mortality[site], extra[site], initial)
+            if not initial and exposed:
                 probability = 1 - (1 - probability) * (1 - demo.maternal_mortality)
             if age >= demo.max_age:
                 probability = 1
-            key = [
-                MORTALITY_VERSION,
-                r.cohorts[cohort]["origin_cohort_id"],
-                r.site_ids[site],
-                sex,
-                r.year,
-                bool(maternal[sample]),
-            ]
-            rng = stream(self.config.seed, *key)
-            quota = int(np.floor(len(group) * probability + rng.random()))
+            cohort_key = self.cohort_keys.get(cohort)
+            if cohort_key is None:
+                cohort_key = encoded(r.cohorts[cohort]["origin_cohort_id"])
+                self.cohort_keys[cohort] = cohort_key
+            expected.append(size * probability)
+            keys.append(
+                b"%b%b,%b,%d,%d,%b]"
+                % (
+                    self.mortality_prefix,
+                    cohort_key,
+                    self.site_keys[site],
+                    sex,
+                    r.year,
+                    b"true" if exposed else b"false",
+                )
+            )
+        doubles, salts = opening_draws(keys)
+        for index, (mean, draw) in enumerate(zip(expected, doubles.tolist(), strict=True)):
+            quota = math.floor(mean + draw)
             if quota:
-                salt = rng.integers(0, 2**64, dtype=np.uint64)
-                ranks = annual_ranks(d["ordinal"][group], salt)
+                group = ordered[boundaries[index] : boundaries[index + 1]]
+                ranks = annual_ranks(d["ordinal"][group], salts[index])
                 dead.extend(group[radix_order(ranks)[:quota]].tolist())
         r.die(dead, r.year, cause="initial_shock_delta" if initial else "annual_mortality")

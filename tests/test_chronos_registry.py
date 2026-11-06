@@ -509,6 +509,7 @@ def test_successful_birth_spacing_is_per_ancestry_with_temporary_interruption():
             previous[mother] = year
         r.data["site"][before : r.n] = -1
         del r.pairs[40:]
+        del r.open_pairs[40:]
     assert counts == [100, 40]
 
 
@@ -634,3 +635,16 @@ def test_simultaneous_founder_guardian_deaths_use_care_without_inventing_parents
     r.partition()
     assert r.households[r.data["household"][child]]["kind"] == "synthetic_care"
     assert r.data["mother"][child] == r.data["father"][child] == -1
+
+
+def test_opening_draws_match_numpy():
+    from lineage_lab.chronos_plan import canonical_bytes
+    from lineage_lab.registry_contract import opening_draws, stream
+
+    parts = [["death", index, "é\"", None, index % 2 == 0] for index in range(2000)]
+    keys = [canonical_bytes(["chronos-registry-rng-1", "42", *p]) for p in parts]
+    doubles, salts = opening_draws(keys)
+    for part, double, salt in zip(parts, doubles, salts, strict=True):
+        rng = stream(42, *part)
+        assert double == rng.random()
+        assert salt == rng.integers(0, 2**64, dtype=np.uint64)

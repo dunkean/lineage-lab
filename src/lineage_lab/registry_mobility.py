@@ -189,7 +189,7 @@ class RegistryMobility:
                 "last_birth": r.start - 10000,
                 "union": len(r.unions),
             }
-            r.pairs.append(pair)
+            r.add_pair(pair)
             r.partner[a], r.partner[b] = b, a
             r.unions.append(
                 {
