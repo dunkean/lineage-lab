@@ -401,6 +401,9 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
+          "shock_id": {
+            "$ref": "#/$defs/id"
+          },
           "source_event_id": {
             "$ref": "#/$defs/id"
           },
@@ -431,6 +434,7 @@
           }
         },
         "required": [
+          "shock_id",
           "source_event_id",
           "valid",
           "site_ids",

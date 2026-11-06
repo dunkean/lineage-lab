@@ -134,6 +134,9 @@ def test_split_cohort_deaths_stay_in_exposed_site():
     for row in rows[:50]:
         r.transfer(r.data["household"][row], 1, reason="test")
     r.config.historical.events[0].extra_mortality = 1
+    # Natural mortality off: only the shock may kill, and only at the exposed site.
+    r.config.races[0].demography.adult_mortality = 0
+    r.config.races[0].demography.aging_coefficient = 0
     RegistryDemography(r).deaths()
     assert len(r.deaths) == 50
     assert {e["site_id"] for e in r.deaths} == {r.site_ids[0]}
@@ -153,6 +156,52 @@ def test_separated_potential_pairs_do_not_reproduce():
     demography.births()
     assert not r.births and not r.unions
     assert demography.exposure["separated_potential_pair_years"] == 1
+
+
+def test_local_repairing_replaces_a_dead_sealed_partner():
+    r = registry()
+    rows = r.add_cohort("founder", 0, 0, 1270, [0, 1, 0, 1])
+    r.seal_pairs(rows)
+    r.partition(founder=True)
+    r.config.society.marriage_rate = 1
+    r.open_year(1301)
+    pairs = list(r.pairs)
+    assert len(pairs) == 2
+    r.die([pairs[0]["a"], pairs[1]["b"]], 1301)
+    r.activate_pairs()
+    r.repair_local()
+    assert len(r.unions) == 1
+    union = r.unions[0]
+    assert set(union["partner_slots"]) == {pairs[0]["b"], pairs[1]["a"]}
+    assert "local_repair" in union["family_key"]
+    r.partition()
+    a, b = union["partner_slots"]
+    assert r.data["household"][a] == r.data["household"][b]
+
+
+def test_local_repairing_excludes_kin_former_partners_and_other_sites():
+    r = registry()
+    r.config.society.marriage_rate = 1
+    parents = r.add_cohort("founder", 0, 0, 1250, [0, 1])
+    r.add_cohort("founder", 0, 0, 1275, [0, 1], parents=[(parents[1], parents[0])] * 2)
+    r.partition(founder=True)
+    r.open_year(1301)
+    r.die(parents, 1301)
+    r.repair_local()
+    assert not r.unions, "siblings cannot re-pair"
+
+    r = registry()
+    r.config.society.marriage_rate = 1
+    rows = r.add_cohort("founder", 0, 0, 1270, [0, 1])
+    r.partition(founder=True)
+    r.open_year(1301)
+    r.former_partners.add(frozenset(map(int, rows)))
+    r.repair_local()
+    assert not r.unions, "a closed pair never forms again"
+    r.former_partners.clear()
+    r.transfer(r.data["household"][rows[0]], 1, reason="test")
+    r.repair_local()
+    assert not r.unions, "re-pairing stays within one site"
 
 
 def test_core_event_tape_and_founder_guardians():
@@ -346,7 +395,11 @@ def test_controller_overlap_zero_baseline_and_exact_quantization():
     site = p["settlements"][0]["site_id"]
     p["shocks"][0].update(valid={"start_year": 1301, "end_year": 1302}, recovery_years=1)
     second = copy.deepcopy(p["shocks"][0])
-    second.update(source_event_id="overlap", valid={"start_year": 1303, "end_year": 1304})
+    second.update(
+        shock_id="episode/overlap",
+        source_event_id="overlap",
+        valid={"start_year": 1303, "end_year": 1304},
+    )
     p["shocks"].append(second)
     c = SiteRegulator(translate_plan(p))
     for year in range(1300, 1307):

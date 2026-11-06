@@ -13,6 +13,7 @@ REGISTRY_VERSION = "chronos-resident-registry-1"
 MORTALITY_VERSION = "chronos-annual-present-mortality-2"
 FERTILITY_VERSION = "chronos-successful-birth-spacing-1"
 REGULATOR_VERSION = "chronos-residual-rational-1"
+REPAIRING_VERSION = "chronos-local-repairing-1"
 PHASES = {"resolve": 10, "birth": 20, "death": 30, "union": 35, "move": 40, "publish": 80}
 NO_YEAR = -(2**31)
 

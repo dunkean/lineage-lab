@@ -444,3 +444,22 @@ thread: **6.807521 s cold**, using an empty dedicated Numba cache, then
 `1d896cf6626f042343aa3a42a83d9f267188a970c38a3baec8b6dd862dd7caff`).
 These times exclude worker startup and prepare, and include simulation,
 serialization and atomic publication; they cover the partial stage-1 artifact.
+
+## Local re-pairing
+
+`chronos-local-repairing-1` is published as `provider_manifest.repairing_rule_version`.
+It is a flagged departure from design §26.2 and §28.3, which keep sealed pairs and
+forbid projected remarriage. Sealed pairs are drawn at birth inside one cohort, so
+without re-pairing about 44 % of women reaching adulthood lost their partner before
+18 and the population fell to 16 % of its start in a century.
+
+At phase 35, after sealed pairs have had their chance, projected adults within the
+marriage ages form a pool per site and ancestry if they have no union and no
+reachable sealed partner: alive, co-resident, of marriageable age and still free.
+This includes widowed and divorced adults. Women enter at `marriage_rate` and men
+always, so a union draws that hazard once. Pools are matched in order of birth year
+then slot ID, within `max_age_gap`, excluding kin within `kinship_depth` and former
+partners. A new union closes both unformed sealed pairs, keeps the mother's last
+birth for spacing, reproduces from `Y+1`, and has a family key marked `local_repair`.
+Regulation still creates no union. The sealed pair remains the first choice; a closed
+pair never forms again. `diagnostics.local_repair_unions` counts these unions.

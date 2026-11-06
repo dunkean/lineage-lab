@@ -15,7 +15,7 @@ from itertools import pairwise
 import numpy as np
 
 from .historical_program import ProviderError
-from .registry_contract import NO_YEAR, address, stream
+from .registry_contract import NO_YEAR, REPAIRING_VERSION, address, stream
 from .registry_kernels import count_living_sites, radix_order
 
 
@@ -66,6 +66,8 @@ class ResidentRegistry:
         self.children = defaultdict(list)
         self.declared_guardians = defaultdict(list)
         self.partner = {}
+        self.sealed_pair = {}
+        self.former_partners = set()
         self.moved = set()
         self.year = self.start
         self.counters = np.zeros((len(self.places), 4), np.int64)  # births, deaths, in, out
@@ -606,6 +608,7 @@ class ResidentRegistry:
                 "last_birth": self.start - 10000,
                 "union": None,
             }
+            self.sealed_pair[int(man)] = self.sealed_pair[int(woman)] = pair
             self.pairs.append(pair)
 
     def activate_pairs(self, *, initial=False):
@@ -623,6 +626,7 @@ class ResidentRegistry:
                 )
                 if dead or divorced or not present:
                     pair["state"] = "closed"
+                    self.former_partners.add(frozenset((a, b)))
                     self.unions[pair["union"]]["valid"]["end_year"] = self.year
                     self.unions[pair["union"]]["end_phase"] = 30 if dead else 35
                     self.unions[pair["union"]]["end_reason"] = "death" if dead else "divorce"
@@ -657,3 +661,113 @@ class ResidentRegistry:
                 }
             )
         return forced
+
+    def _kin(self, a, b):
+        """Shared ancestor within the society's kinship depth, or direct descent."""
+        d, depth = self.data, self.config.society.kinship_depth
+
+        def lineage(row):
+            people, frontier = {row}, [row]
+            for _ in range(depth):
+                frontier = [
+                    int(d[f][p]) for p in frontier for f in ("mother", "father") if d[f][p] >= 0
+                ]
+                people.update(frontier)
+            return people
+
+        return not lineage(a).isdisjoint(lineage(b))
+
+    def _awaits_sealed_partner(self, row):
+        pair = self.sealed_pair.get(row)
+        if pair is None or pair["state"] != "unformed":
+            return False
+        d, society = self.data, self.config.society
+        other = pair["a"] if pair["b"] == row else pair["b"]
+        age = self.year - int(d["birth"][other])
+        return (
+            d["site"][other] == d["site"][row]
+            and other not in self.partner
+            and society.marriage_min_age <= age <= society.marriage_max_age
+        )
+
+    def repair_local(self):
+        """Phase 35 local re-pairing, `chronos-local-repairing-1`.
+
+        Sealed pairs are drawn at birth inside one cohort, so a partner's death,
+        a sex surplus or a move would otherwise leave the survivor single for
+        life. Adults with no union and no reachable sealed partner form a
+        site/ancestry pool. Women enter it at the society's marriage rate and men
+        always, so a union draws that hazard once, as a sealed pair does. Each
+        pool is matched in age order, within the age gap, outside kin and former
+        partners. Draws are keyed on slot and year, never on table order.
+        """
+        d, society = self.data, self.config.society
+        pools = defaultdict(lambda: ([], []))
+        for row in map(int, self.living()):
+            age = self.year - int(d["birth"][row])
+            if (
+                row in self.partner
+                or not society.marriage_min_age <= age <= society.marriage_max_age
+                or self._awaits_sealed_partner(row)
+            ):
+                continue
+            sex = int(d["sex"][row])
+            draw = stream(self.config.seed, REPAIRING_VERSION, self.ids[row], self.year)
+            if sex == 0 or draw.random() < society.marriage_rate:
+                pools[int(d["site"][row]), int(d["race"][row])][sex].append(row)
+        for (site, _), (men, women) in sorted(pools.items()):
+            men.sort(key=lambda p: (int(d["birth"][p]), self.ids[p]))
+            women.sort(key=lambda p: (int(d["birth"][p]), self.ids[p]))
+            for woman in women:
+                for index, man in enumerate(men):
+                    gap = int(d["birth"][man]) - int(d["birth"][woman])
+                    if gap > society.max_age_gap:
+                        break
+                    if (
+                        gap >= -society.max_age_gap
+                        and frozenset((man, woman)) not in self.former_partners
+                        and not self._kin(man, woman)
+                    ):
+                        del men[index]
+                        self._repair_union(man, woman, site)
+                        break
+
+    def _repair_union(self, man, woman, site):
+        for row in (man, woman):
+            pair = self.sealed_pair.get(row)
+            if pair is not None and pair["state"] == "unformed":
+                pair["state"] = "closed"
+        key = address(
+            "family",
+            self.domain,
+            self.source,
+            "local_repair",
+            *self.slot_keys[man],
+            *self.slot_keys[woman],
+            self.year,
+        )
+        self.pairs.append(
+            {
+                "key": key,
+                "a": man,
+                "b": woman,
+                "state": "active",
+                "formed": self.year,
+                "last_birth": int(self.data["last_birth"][woman]),
+                "union": len(self.unions),
+            }
+        )
+        self.partner[man], self.partner[woman] = woman, man
+        self.unions.append(
+            {
+                "union_id": address("union", *json.loads(key)[1:]),
+                "partner_slots": [man, woman],
+                "family_key": key,
+                "valid": {"start_year": self.year, "end_year": self.end},
+                "start_phase": 35,
+                "end_phase": 0,
+                "end_reason": "coverage_end",
+                "site_at_formation": self.site_ids[site],
+                "source": "projected",
+            }
+        )

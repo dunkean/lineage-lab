@@ -137,6 +137,8 @@ def reproduction(registry):
     window AND their latest possible daughter's adulthood to be observed.
     Numerator: their recorded daughters surviving to minimum fertile age.
     Unknown survival after external departure contributes zero to a lower bound.
+    The legacy lower bound divides by girls born, so replacement reads about l(18),
+    not 1. `net_reproduction_at_maturity` divides by the women who reach that age.
     """
     d, start, end = registry.data, registry.start, registry.end
     demos = RegistryPolicy(registry)
@@ -147,14 +149,22 @@ def reproduction(registry):
         if d["sex"][p] == 1 and start <= d["birth"][p] <= latest:
             mothers.add(p)
     daughters = unknown = 0
+
+    def mature(person):
+        age = int(d["birth"][person]) + demos[int(d["race"][person])].fertility_min_age
+        return d["coverage_end"][person] > age and (
+            d["death"][person] == -(2**31) or d["death"][person] > age
+        )
+
+    matured = sum(mature(p) for p in mothers)
     for mother in mothers:
         for child in registry.children[mother]:
             if d["sex"][child] != 1:
                 continue
-            mature = int(d["birth"][child]) + demos[int(d["race"][child])].fertility_min_age
-            if d["coverage_end"][child] <= mature:
+            age = int(d["birth"][child]) + demos[int(d["race"][child])].fertility_min_age
+            if d["coverage_end"][child] <= age:
                 unknown += 1
-            elif d["death"][child] == -(2**31) or d["death"][child] > mature:
+            elif mature(child):
                 daughters += 1
     return {
         "female_birth_cohort": len(mothers),
@@ -166,6 +176,8 @@ def reproduction(registry):
             for p in mothers
         ),
         "observed_nrr_lower_bound": daughters / len(mothers) if mothers else None,
+        "women_reaching_fertile_age": int(matured),
+        "net_reproduction_at_maturity": daughters / matured if matured else None,
         "births": len(registry.births),
         "deaths": len(registry.deaths),
     }

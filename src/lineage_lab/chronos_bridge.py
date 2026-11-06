@@ -319,6 +319,7 @@ def complete_result(plan, config):
         MORTALITY_VERSION,
         REGISTRY_VERSION,
         REGULATOR_VERSION,
+        REPAIRING_VERSION,
     )
 
     archive, selected, policy = select_core_variant(
@@ -335,6 +336,7 @@ def complete_result(plan, config):
                   "projection_version": plan["provider"]["projection_version"],
                   "registry_version": REGISTRY_VERSION, "mortality_rule_version": MORTALITY_VERSION,
                   "fertility_rule_version": FERTILITY_VERSION, "regulator_version": REGULATOR_VERSION,
+                  "repairing_rule_version": REPAIRING_VERSION,
                   "runtime": runtime, "runtime_fingerprint": fingerprint(runtime),
                   "core_selection": policy, "capabilities": sorted(plan["provider"]["capabilities"]),
                   "input_profiles": plan["resolved_profiles"],

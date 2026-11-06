@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
-  "plan_id": "pop/demo/domain-0/v1",
+  "plan_id": "plan.Y2hyMgAUAAAAY2Fub24tc29jaWFsLWRlbW8tNDILAAAAcmVnaW9uL2RlbW9IAAAAc29jaWV0eS83Njk2MTU4M2Y2MjFkYzhkM2I2NTRhZTUyMmUyM2IzMzIwNjUwMWQyMDAyOTE3YzM2NzE2YWYzYzU4MDI5YmY3AQAAADA",
   "canon_id": "canon-social-demo-42",
-  "domain_id": "domain/demo/0",
+  "domain_id": "domain.Y2hyMgAUAAAAY2Fub24tc29jaWFsLWRlbW8tNDILAAAAcmVnaW9uL2RlbW9IAAAAc29jaWV0eS83Njk2MTU4M2Y2MjFkYzhkM2I2NTRhZTUyMmUyM2IzMzIwNjUwMWQyMDAyOTE3YzM2NzE2YWYzYzU4MDI5YmY3AQAAADA",
   "plan_fingerprint": "example-not-a-computed-fingerprint",
   "timeline": {
     "start_year": 1300,
     "end_year": 1400
   },
   "world_seed": "42",
-  "seed": "11040611567489494868",
+  "seed": "5854947233154073793",
   "provider": {
     "mode": "lineage_hybrid",
     "algorithm_id": "chronos-cohort-1",
@@ -345,6 +345,7 @@
   ],
   "shocks": [
     {
+      "shock_id": "episode/demo/plague-a",
       "source_event_id": "event/demo/plague",
       "valid": {
         "start_year": 1354,

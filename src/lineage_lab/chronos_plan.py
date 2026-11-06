@@ -276,7 +276,7 @@ def validate_plan(plan, runtime):
     kinship = indexed(profiles["kinship"], "id")
     classes = indexed(profiles["social_classes"], "id")
     external = indexed(profiles["external"], "id")
-    indexed(plan["shocks"], "source_event_id")
+    indexed(plan["shocks"], "shock_id")
     indexed(plan["historical_program"], "op_id")
     indexed(plan["role_demands"], "slot_id")
     ports = indexed(plan["boundary_ports"], "port_id")
@@ -366,10 +366,18 @@ def validate_plan(plan, runtime):
     for site_id in sites:
         if (site_id, start) not in markers or (site_id, end - 1) not in markers:
             invalid("Baseline must cover first and last public year", site_id)
+    exposures = set()
     for shock in plan["shocks"]:
         span(shock["valid"])
+        if shock["shock_id"] == shock["source_event_id"]:
+            invalid("Shock identity must differ from its source event", shock["shock_id"])
         if set(shock["site_ids"]) - sites.keys():
-            invalid("Shock references an unknown site", shock["source_event_id"])
+            invalid("Shock references an unknown site", shock["shock_id"])
+        for site_id in shock["site_ids"]:
+            exposure = shock["source_event_id"], site_id
+            if exposure in exposures:
+                invalid("Source event is exposed twice at one site", shock["shock_id"])
+            exposures.add(exposure)
     for edge in plan["mobility_edges"]:
         span(edge["valid"])
         if edge["from_site_id"] not in sites or edge["to_site_id"] not in sites:
@@ -443,10 +451,10 @@ def translate_plan(plan):
     local_ids = {s["site_id"]: s["provider_local_id"] for s in sites}
     initial = sum(s["initial_population"] for s in sites)
     events = []
-    for shock in sorted(plan["shocks"], key=lambda s: s["source_event_id"].encode("utf-8")):
+    for shock in sorted(plan["shocks"], key=lambda s: s["shock_id"].encode("utf-8")):
         events.append(
             {
-                "name": shock["source_event_id"],
+                "name": shock["shock_id"],
                 "start_year": shock["valid"]["start_year"],
                 "end_year": shock["valid"]["end_year"] - 1,
                 "settlements": [local_ids[s] for s in shock["site_ids"]],

@@ -29,6 +29,7 @@ from lineage_lab.chronos_plan import (
     plan_fingerprint,
     translate_parameters,
     translate_plan,
+    validate_plan,
     validate_schema,
 )
 from lineage_lab.cohorts import Cohorts
@@ -47,6 +48,10 @@ from lineage_lab.population_export import RESULT_FORMAT, validate_population_res
 @pytest.fixture(scope="module")
 def worker(tmp_path_factory):
     return Worker(tmp_path_factory.mktemp("chronos"))
+
+
+# These tests rely on what this seed draws; the bundled example moved to another one.
+PINNED_SEED = "11040611567489494868"
 
 
 def example(runtime, *, small=True):
@@ -271,8 +276,8 @@ def read_result(worker, response):
 
 def test_bundled_contract_bytes_are_pinned():
     expected = {
-        "population-plan.schema.json": "0495fbfd2267405d594c39c0c9b4c649c8fe2aa74239f1bdb4391496d3f2d738",
-        "village-population-plan.example.json": "47c0e1e5e39267537fb70a3474794c457b248f695a2255465b791478f358ef1f",
+        "population-plan.schema.json": "f9b297f147fa9ba2b164da3f98a411b955c81ab533df467ed26060695579dd10",
+        "village-population-plan.example.json": "7b23621e54e3831650721244b3ac7d1c4edf9529df9c6eb5e1d01653bad70db3",
         "requirements.lock": "87274b79ba36271b52388f9acbe4dbe7eeabed43dd87e85f998372bbd2d22223",
     }
     for name, digest in expected.items():
@@ -610,10 +615,26 @@ def test_crisis_is_applied_once(worker):
     assert np.allclose(survival, 1 - mortality_probability(base, m[:, None], e[:, None]))
 
 
+def test_shock_identity_rules(worker):
+    def refused(change):
+        plan = example(worker.runtime_id)
+        second = copy.deepcopy(plan["shocks"][0])
+        plan["shocks"].append(second)
+        change(plan["shocks"][0], second)
+        with pytest.raises(ProviderError) as error:
+            validate_plan(seal(plan), worker.runtime_id)
+        return str(error.value)
+
+    assert "Duplicate" in refused(lambda a, b: None)
+    assert "twice" in refused(lambda a, b: b.update(shock_id="episode/other"))
+    assert "differ" in refused(lambda a, b: a.update(shock_id=a["source_event_id"]))
+
+
 def test_independent_survival_composes_factors_before_additional_mortality(worker):
     plan = example(worker.runtime_id)
     second = copy.deepcopy(plan["shocks"][0])
     second["source_event_id"] = "event/z"
+    second["shock_id"] = "episode/z"
     second["effects"] = {"additional_mortality_bps": 2000, "mortality_multiplier_ppm": 2000000}
     plan["shocks"].append(second)
     program = HistoricalProgram(translate_plan(plan))
@@ -638,6 +659,7 @@ def test_future_shock_does_not_change_realized_past(worker):
 @pytest.mark.parametrize("factor", [500000, 2000000])
 def test_initial_shock_is_applied_before_first_census(worker, factor):
     plan = example(worker.runtime_id)
+    plan["seed"] = PINNED_SEED
     plan["shocks"][0].update(
         valid={"start_year": 1300, "end_year": 1301},
         effects={"additional_mortality_bps": 5000, "mortality_multiplier_ppm": factor},
@@ -736,6 +758,7 @@ def test_free_core_policy_is_query_independent(worker):
     # Exercise the annual relative ceiling in HybridEngine, independently of
     # the absolute Engine ceiling above, with actual construction and replay.
     plan = example(worker.runtime_id)
+    plan["seed"] = PINNED_SEED
     plan["limits"].update(core_max_share_bps=500, max_core_living=1000)
     config = translate_plan(seal(plan))
     first = partial_result(plan, config)
@@ -937,7 +960,11 @@ def test_initial_effects_without_consequence_judges_composition(worker):
     first.update(valid={"start_year": 1300, "end_year": 1301},
                  effects={"mortality_multiplier_ppm": 4000000})
     second = copy.deepcopy(first)
-    second.update(source_event_id="event/cancel", effects={"mortality_multiplier_ppm": 250000})
+    second.update(
+        shock_id="episode/cancel",
+        source_event_id="event/cancel",
+        effects={"mortality_multiplier_ppm": 250000},
+    )
     plan["shocks"].append(second)
     result = partial_result(seal(plan), translate_plan(plan))
     assert result["diagnostics"]["initial_delta"]["effects_without_consequence"] == []

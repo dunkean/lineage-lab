@@ -48,6 +48,7 @@ class IntegratedPopulation:
                 mothers, eligible = demo.births(multiplier, opening_core=core_previous)
                 demo.deaths(mothers)
                 forced = r.activate_pairs()
+                r.repair_local()
             r.partition(force_single=forced)
             # These current-year core facts first become visible to background
             # movement in phase 40. The phase-10 controller used only old counts.
@@ -170,6 +171,9 @@ class IntegratedPopulation:
                 state: sum(p["state"] == state for p in self.registry.pairs)
                 for state in ("unformed", "active", "closed")
             },
+            "local_repair_unions": sum(
+                '"local_repair"' in u["family_key"] for u in self.registry.unions
+            ),
             "role_demands": "planning_only; no_office_holder_selected",
             "projection_limits": {
                 k: self.config.historical.limits[k]
