@@ -463,3 +463,42 @@ partners. A new union closes both unformed sealed pairs, keeps the mother's last
 birth for spacing, reproduces from `Y+1`, and has a family key marked `local_repair`.
 Regulation still creates no union. The sealed pair remains the first choice; a closed
 pair never forms again. `diagnostics.local_repair_unions` counts these unions.
+
+## Core in-marriage
+
+Provider algorithm `chronos-cohort-2` adds `chronos-core-in-marriage-1`, published as
+`provider_manifest.core_in_marriage_rule_version`. `chronos-cohort-1` keeps the closed
+core and replays unchanged. The rule departs from design §25.3 ("no exterior
+marriage"): the core of a few hundred people on nine to eleven sites formed too few
+couples and lost about half of its start in a century, with or without shocks.
+
+At phase 40 of each year after the first, core adults who searched at phase 35 and
+found no core partner may marry a newcomer from the background of their site, who
+joins the core as a new slot with unknown parents, in an origin cohort of kind
+`core_in_marriage` and type `arrival`. The spouse has the opposite sex and the same
+ancestry; the birth year is drawn around the searcher's within the marriage ages and
+`max_age_gap`; the status follows the background `status_weights` tilted by
+`status_affinity`. Marriage is open only while the living core is below
+`floor(core_target_share_bps × Σ baseline(Y) / 10000)`, and at most up to that
+deficit; searchers are served in a stream permutation. Without that gate every mixed
+couple brings a whole family into the core, which then roughly doubled each generation
+and broke the core budgets in every run tried. Draws use one stream per plan seed and year.
+The core still never reads the background.
+
+The background then removes one resident of the same site and sex at the same
+stamp: unpartnered, same ancestry and of marriage age if possible, then nearest birth
+year, someone living alone, and slot ID. That residence ends `departed_external` at
+phase 40 without a transfer, and the spouse's core residence starts there, so site
+totals, flows and the regulator are unchanged and the person counts once. An active
+union of the leaver closes; other household members stay. If no resident of that sex
+exists, the attempt is rejected through `CoreBudgetExceeded`. Children of mixed
+couples are core. `diagnostics.core_in_marriage` counts spouses, matches outside the
+preferred group and the summed birth-year gap.
+
+Measured with `tools/measure_chronos_core.py`, regulation on: the two demo plans
+(six demographic seeds) keep 113 % and 111 % of their core over the century, with or
+without shocks, against 42–48 % before; 22 `large_no_shock` seeds keep 127 % (start
+550), the whole population ends at 13,738 for a marker of 13,800 (13,657 with
+`chronos-cohort-1`), with no extinction and no budget rejection. The gate ignores
+shocks, so after a crisis the core refills from the background faster than the
+population recovers.

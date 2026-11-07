@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+
 import numpy as np
 
 from .cohort_residence import ResidentRegistry
@@ -19,6 +21,7 @@ class IntegratedPopulation:
         self.regulation_enabled = regulation
         self.censuses, self.coverage, self.cohort_counts = [], [], []
         self.summary = {}
+        self.in_marriage_rows = []
 
     def run(self):
         config = self.config
@@ -56,6 +59,8 @@ class IntegratedPopulation:
             core_counters = (
                 self.core.annual[year]["counters"] if self.core else np.zeros_like(r.counters)
             )
+            if self.core:
+                self._in_marriage_departures(year)
             mobility.programmed(self.core.operations if self.core else ())
             if year != r.start:
                 mobility.ports(opening)
@@ -125,6 +130,59 @@ class IntegratedPopulation:
         }
         return self
 
+    def _in_marriage_departures(self, year):
+        """Phase 40 counterpart of `chronos-core-in-marriage-1`.
+
+        For each spouse the core drew, one background resident of the same site
+        and sex leaves the background, so the person counts once. Preferred:
+        unpartnered, same ancestry and of marriage age; then the nearest birth
+        year, someone living alone, and the semantic slot ID. No such resident
+        rejects the core variant through the existing budget rule.
+        """
+        requests = sorted(self.core.in_marriages.get(year, ()), key=lambda q: q[4].encode())
+        if not requests:
+            return
+        r, society = self.registry, self.config.society
+        d = r.data
+        by_site = defaultdict(list)
+        for row in map(int, r.living()):
+            if year - int(d["birth"][row]) >= society.dependent_age:
+                by_site[int(d["site"][row])].append(row)
+
+        def rank(row, race, birth):
+            age = year - int(d["birth"][row])
+            preferred = (
+                row not in r.partner
+                and int(d["race"][row]) == race
+                and society.marriage_min_age <= age <= society.marriage_max_age
+            )
+            household = int(d["household"][row])
+            shared = household >= 0 and len(r.households[household]["members"]) > 1
+            return (not preferred, abs(int(d["birth"][row]) - birth), shared, r.ids[row])
+
+        for site, sex, race, birth, core_id in requests:
+            candidates = [p for p in by_site[site] if d["sex"][p] == sex]
+            if not candidates:
+                raise CoreBudgetExceeded(
+                    "No background resident can marry into the core",
+                    year=year,
+                    constraint="core_in_marriage_background",
+                )
+            row = min(candidates, key=lambda p, race=race, birth=birth: rank(p, race, birth))
+            fallback = rank(row, race, birth)[0]
+            by_site[site].remove(row)
+            r.leave_to_core(row)
+            self.in_marriage_rows.append(
+                {
+                    "year": year,
+                    "site_id": r.site_ids[site],
+                    "core_slot": core_id,
+                    "background_slot": r.ids[row],
+                    "birth_year_gap": abs(int(d["birth"][row]) - birth),
+                    "fallback": fallback,
+                }
+            )
+
     def _budgets(self, year, core_alive, background_alive):
         limits = self.config.historical.limits
         core_ever = self.core.annual[year]["historical"] if self.core else 0
@@ -162,7 +220,18 @@ class IntegratedPopulation:
         return export_tables(registries, self.core)
 
     def diagnostics(self):
+        extra = {}
+        if self.config.historical.core_in_marriage:
+            rows = self.in_marriage_rows
+            extra["core_in_marriage"] = {
+                "rule_version": self.config.historical.core_in_marriage,
+                "spouses": len(rows),
+                "fallback_matches": sum(row["fallback"] for row in rows),
+                "birth_year_gap_total": sum(row["birth_year_gap"] for row in rows),
+                "background_exit": "departed_external at phase 40; core arrival cohort",
+            }
         return {
+            **extra,
             "core_coverage": self.coverage,
             "regulation": self.regulator.rows,
             "mobility": self.mobility.diagnostics,

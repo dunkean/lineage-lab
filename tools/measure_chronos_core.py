@@ -251,14 +251,30 @@ def enrich_core_exposure(path):
     return output
 
 
-def audit(output_path=None, seeds=SEEDS, cases=("example", "large_no_shock")):
+def audit(
+    output_path=None,
+    seeds=SEEDS,
+    cases=("example", "large_no_shock"),
+    algorithm="chronos-cohort-1",
+    plan_path=None,
+    regulation=(False, True),
+):
+    """`example` runs the plan as given, `no_shock` drops its shocks and
+    `large_no_shock` also scales the example tenfold. `plan_path` replaces the
+    contract example, `algorithm` selects the provider algorithm."""
     import lineage_lab.integrated_population as population_module
 
     original_core_provider = population_module.precompute_core
-    base = json.loads(CONTRACT.joinpath("village-population-plan.example.json").read_bytes())
+    if plan_path:
+        base = json.loads(Path(plan_path).read_bytes())
+    else:
+        base = json.loads(CONTRACT.joinpath("village-population-plan.example.json").read_bytes())
+    base["provider"]["algorithm_id"] = algorithm
     output = {
         "seeds": list(seeds),
         "years": list(YEARS),
+        "algorithm": algorithm,
+        "plan": str(plan_path) if plan_path else "contract example",
         "cases": {},
         "calibration": "none; templates unchanged",
         "nrr_definition": "observed daughter survival to fertile age, completed birth cohorts; lower bound under external censoring",
@@ -277,9 +293,11 @@ def audit(output_path=None, seeds=SEEDS, cases=("example", "large_no_shock")):
             # Reuse only immutable precomputed core tapes across the measurement's
             # regulation-off/on pair. Production Worker jobs never share them.
             population_module.precompute_core = cached_core
-            for regulated in (False, True):
+            for regulated in regulation:
                 plan = copy.deepcopy(base)
                 plan["seed"] = str(seed)
+                if case == "no_shock":
+                    plan["shocks"] = []
                 if case == "large_no_shock":
                     plan["shocks"] = []
                     plan["limits"].update(
@@ -326,6 +344,11 @@ def audit(output_path=None, seeds=SEEDS, cases=("example", "large_no_shock")):
                         r["multiplier_ppm"] != 1000000 for r in rows
                     ),
                     "no_eligible_pair_site_years": sum(r["no_eligible_pairs"] for r in rows),
+                    "core_in_marriage": world.diagnostics().get("core_in_marriage"),
+                    "core_start": world.summary["core_founders_simulated"],
+                    "core_final": world.coverage[-1]["core_alive"],
+                    "core_minimum": min(r["core_alive"] for r in world.coverage),
+                    "population_final": world.coverage[-1]["population"],
                     "maximum_absolute_guide_error": max(
                         abs(r["error"][0] / r["error"][1]) for r in rows
                     ),
@@ -487,10 +510,13 @@ if __name__ == "__main__":
     parser.add_argument("--seeds", type=int, nargs="+", default=SEEDS)
     parser.add_argument(
         "--cases",
-        choices=["example", "large_no_shock"],
+        choices=["example", "no_shock", "large_no_shock"],
         nargs="+",
         default=["example", "large_no_shock"],
     )
+    parser.add_argument("--algorithm", default="chronos-cohort-1")
+    parser.add_argument("--plan", type=Path, help="plan JSON replacing the contract example")
+    parser.add_argument("--regulated-only", action="store_true")
     args = parser.parse_args()
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -504,7 +530,14 @@ if __name__ == "__main__":
             parser.error("--output must name the existing audit")
         result = enrich_core_exposure(args.output)
     else:
-        result = audit(args.output, seeds=args.seeds, cases=args.cases)
+        result = audit(
+            args.output,
+            seeds=args.seeds,
+            cases=args.cases,
+            algorithm=args.algorithm,
+            plan_path=args.plan,
+            regulation=(True,) if args.regulated_only else (False, True),
+        )
     content = json.dumps(result, indent=2, default=lambda v: v.item())
     if args.output:
         args.output.write_text(content, encoding="utf-8")

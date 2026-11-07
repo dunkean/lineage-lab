@@ -634,3 +634,83 @@ def test_simultaneous_founder_guardian_deaths_use_care_without_inventing_parents
     r.partition()
     assert r.households[r.data["household"][child]]["kind"] == "synthetic_care"
     assert r.data["mother"][child] == r.data["father"][child] == -1
+
+
+def in_marriage_plan(algorithm, end=1320):
+    """Small example plan over twenty years, so mixed couples have children."""
+    p = example("runtime")
+    p["provider"]["algorithm_id"] = algorithm
+    p["timeline"]["end_year"] = end
+    for site in p["settlements"]:
+        site["occupation_episodes"][0]["valid"]["end_year"] = end
+    for marker in p["baseline_markers"]:
+        if marker["year"] != 1300:
+            marker["year"] = end - 1
+    for record in (*p["role_demands"], *p["boundary_ports"], *p["mobility_edges"]):
+        record["valid"]["end_year"] = end
+    for port in p["boundary_ports"]:
+        port["rate_episodes"][0]["valid"]["end_year"] = end
+    return seal(p)
+
+
+def test_core_in_marriage_counts_spouses_once_and_their_children_are_core():
+    p = in_marriage_plan("chronos-cohort-2")
+    result = materialize(p)  # complete_result validates every table and balance
+    assert result["provider_manifest"]["core_in_marriage_rule_version"] == (
+        "chronos-core-in-marriage-1"
+    )
+    assert materialize(p)["result_fingerprint"] == result["result_fingerprint"]
+    c = result["candidate_table"]
+    cohorts = {k["origin_cohort_id"]: k for k in result["origin_cohorts"]}
+    spouses = {
+        p for p, origin in enumerate(c["origin_cohort_id"]) if '"core_in_marriage"' in origin
+    }
+    report = result["diagnostics"]["core_in_marriage"]
+    assert spouses and len(spouses) == report["spouses"]
+    for slot in spouses:
+        assert cohorts[c["origin_cohort_id"][slot]]["origin_type"] == "arrival"
+        assert c["source"][slot] == "simulated"
+        assert c["mother_slot"][slot] is None and c["father_slot"][slot] is None
+    # Each spouse marries a core member at phase 40, the stamp of its first residence.
+    first = {}
+    for row in result["residence_index"]:
+        first.setdefault(row["person_slot"], row)
+    unions = [u for u in result["union_allocations"] if spouses & set(u["partner_slots"])]
+    assert len(unions) >= len(spouses)
+    for union in unions:
+        assert all(c["source"][p] == "simulated" for p in union["partner_slots"])
+    for slot in spouses:
+        assert (first[slot]["valid"]["start_year"], first[slot]["start_phase"]) == (
+            c["coverage_start_year"][slot],
+            40,
+        )
+    # The background loses one resident per spouse, at the same site and stamp,
+    # without a transfer or a flow.
+    exits = [
+        r
+        for r in result["residence_index"]
+        if r["end_reason"] == "departed_external" and c["source"][r["person_slot"]] == "projected"
+    ]
+    ported = {
+        s for t in result["residence_transfers"] if t["to_site"] is None for s in t["origin_slots"]
+    }
+    married_out = sorted(
+        (r["valid"]["end_year"], r["site_id"]) for r in exits if r["person_slot"] not in ported
+    )
+    married_in = sorted((first[s]["valid"]["start_year"], first[s]["site_id"]) for s in spouses)
+    assert married_out == married_in
+    children = [
+        p
+        for p in range(len(c["origin_id"]))
+        if spouses & {c["mother_slot"][p], c["father_slot"][p]}
+    ]
+    assert children and all(c["source"][p] == "simulated" for p in children)
+
+
+def test_version_one_plans_keep_a_closed_core():
+    p = in_marriage_plan("chronos-cohort-1")
+    assert "core_in_marriage" not in translate_plan(p).model_dump(mode="json")["historical"]
+    result = materialize(p)
+    assert "core_in_marriage_rule_version" not in result["provider_manifest"]
+    assert "core_in_marriage" not in result["diagnostics"]
+    assert not any('"core_in_marriage"' in k["origin_cohort_id"] for k in result["origin_cohorts"])

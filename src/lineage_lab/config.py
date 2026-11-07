@@ -350,6 +350,10 @@ class HistoricalSettings(Settings):
     occupation_episodes: dict[int, list[dict]] = Field(default_factory=dict)
     limits: dict[str, int] = Field(default_factory=dict)
     registry_version: str | None = None
+    # Rule version for core marriage with background residents; None keeps a closed core.
+    core_in_marriage: Literal["chronos-core-in-marriage-1"] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     domain_id: str = ""
     site_ids: dict[int, str] = Field(default_factory=dict)
     kinship_by_site: dict[int, str] = Field(default_factory=dict)

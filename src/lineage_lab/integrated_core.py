@@ -12,11 +12,13 @@ from copy import deepcopy
 
 import numpy as np
 
+from .chronos_plan import IN_MARRIAGE_VERSION
 from .cohort_residence import ResidentRegistry
 from .config import Scenario
 from .engine import Engine
 from .projection import derive_seed
 from .registry_contract import NO_YEAR, address
+from .site_regulation import interpolate
 
 
 class IntegratedCore(Engine):
@@ -27,6 +29,13 @@ class IntegratedCore(Engine):
         self.annual, self.operations = {}, []
         self.domain_config = domain_config
         self.tape = []
+        # Spouses drawn from the background, by engine ID, and the requests the
+        # background must honour: year -> [(site, sex, race, birth, core slot)].
+        self.in_married, self.in_marriages = set(), defaultdict(list)
+        self.in_marriage_unions = set()
+        self.markers = defaultdict(list)
+        for marker in sorted(domain_config.historical.baseline_markers, key=lambda m: m.year):
+            self.markers[marker.site_id].append(marker)
         super().__init__(config)
 
     def _sync_slots(self):
@@ -38,6 +47,12 @@ class IntegratedCore(Engine):
                 int(d["birth_place"][person]), int(d["race"][person]), int(d["birth"][person])
             ].append(person)
         for (place, race, birth), people in sorted(groups.items()):
+            spouses = [p for p in people if p in self.in_married]
+            if spouses:
+                self._add_spouses(place, race, birth, spouses)
+                people = [p for p in people if p not in self.in_married]
+                if not people:
+                    continue
             founder = birth <= self.config.start_year and not self.slot_map
             # Founder classification is based on engine parentage, including age-zero founders.
             founder = all(d["mother"][p] < 0 and d["father"][p] < 0 for p in people)
@@ -74,6 +89,102 @@ class IntegratedCore(Engine):
         if dead:
             r.die(dead, self.year)
 
+    def _add_spouses(self, place, race, birth, people):
+        """Seal in-married spouses as a phase-40 arrival cohort with unknown parents."""
+        r, d = self.registry, self.data
+        site = r.local_index[place]
+        rows = r.add_cohort(
+            "core_in_marriage",
+            site,
+            race,
+            birth,
+            d["sex"][people],
+            token=self.year,
+            flags=d["reproduction_flags"][people],
+            origin_type="arrival",
+            phase=40,
+        )
+        for person, row in zip(people, rows, strict=True):
+            self.slot_map[person], self.person_map[int(row)] = int(row), person
+            self.in_marriages[self.year].append(
+                (site, int(d["sex"][person]), race, birth, r.ids[int(row)])
+            )
+
+    def _in_marriages(self):
+        """`chronos-core-in-marriage-1`: phase 40 marriage with a background resident.
+
+        A core adult who searched at phase 35 and found no core partner may
+        marry a newcomer from the background of the same site, who joins the
+        core with unknown parents. Such marriages are open only while the living
+        core is below its planned share of the baseline markers,
+        `floor(core_target_share_bps × Σ baseline(Y) / 10000)`, and at most up
+        to that deficit; searchers are served in a stream permutation. Marriage
+        to every searcher would double the core each generation, since each
+        mixed couple brings a whole family into it. Sex is opposite, ancestry
+        shared, the age drawn around the searcher's within the marriage window
+        and age gap, the status from the background weights tilted by status
+        affinity. All draws come from one stream per plan seed and year.
+        """
+        settings = self.domain_config.historical
+        if not settings.core_in_marriage or self.year == self.config.start_year:
+            return ()
+        d, s = self.data, self.society
+        seekers = np.sort(getattr(self, "match_participants", np.empty(0, np.int32)))
+        seekers = seekers[(d["partner"][seekers] < 0) & (d["death"][seekers] == NO_YEAR)]
+        baseline = sum(
+            interpolate(markers, self.year, "population") for markers in self.markers.values()
+        )
+        guide = baseline * settings.limits["core_target_share_bps"] // 10000
+        deficit = max(0, int(guide) - len(self.alive))
+        if not len(seekers) or not deficit:
+            return ()
+        rng = self.stream(IN_MARRIAGE_VERSION, "marriages")
+        seekers = np.sort(rng.permutation(seekers)[:deficit])
+        status_weights = np.array(s.status_weights, dtype=float)
+        ranks = np.arange(len(status_weights))
+        spouses = self._allocate(len(seekers))
+        d = self.data  # allocation may have grown the arrays
+        for seeker, spouse in zip(seekers, spouses, strict=True):
+            race = int(d["race"][seeker])
+            born = int(d["birth"][seeker])
+            gap = int(self.race_age_gap[race])
+            low = max(born - gap, self.year - int(self.race_marriage_max[race]))
+            high = min(born + gap, self.year - int(self.race_marriage_min[race]))
+            offset = round(float(rng.normal(0, max(1, gap) / 4)))
+            weights = status_weights * (1 - s.status_affinity) ** np.abs(
+                ranks - int(d["status"][seeker])
+            )
+            if weights.sum() <= 0:
+                weights = (ranks == int(d["status"][seeker])).astype(float)
+            d["sex"][spouse] = 1 - d["sex"][seeker]
+            d["race"][spouse] = race
+            d["birth"][spouse] = min(high, max(low, born + offset))
+            d["status"][spouse] = int(rng.choice(len(weights), p=weights / weights.sum()))
+            d["place"][spouse] = d["birth_place"][spouse] = d["place"][seeker]
+            d["place_slot"][spouse] = d["place_slot"][seeker]
+            d["family"][spouse] = spouse
+        self._assign_reproduction(spouses)
+        stream_rng, self.rng = self.rng, rng
+        self._activity(spouses, d["place"][spouses])
+        self.rng = stream_rng
+        men = np.where(d["sex"][seekers] == 0, seekers, spouses)
+        women = np.where(d["sex"][seekers] == 0, spouses, seekers)
+        unions = np.arange(self.next_union, self.next_union + len(seekers), dtype=np.int32)
+        self.next_union += len(seekers)
+        d["partner"][men], d["partner"][women] = women, men
+        d["union"][men] = d["union"][women] = unions
+        self.new_unions.batch(
+            np.column_stack(
+                (unions, men, women, np.full(len(unions), self.year), d["place"][seekers])
+            )
+        )
+        self.in_married.update(map(int, spouses))
+        self.in_marriage_unions.update(map(int, unions))
+        self.alive = np.concatenate((self.alive, spouses))
+        self._sync_slots()
+        self._sync_unions()
+        return np.r_[seekers, spouses]
+
     def _sync_unions(self):
         r = self.registry
         for uid, a, b, year, site in self.new_unions:
@@ -89,7 +200,11 @@ class IntegratedCore(Engine):
                     "partner_slots": [a, b],
                     "family_key": r.core_family_key(b, a),
                     "valid": {"start_year": year, "end_year": r.end},
-                    "start_phase": 10 if year == r.start else 35,
+                    "start_phase": 10
+                    if year == r.start
+                    else 40
+                    if uid in self.in_marriage_unions
+                    else 35,
                     "end_phase": 0,
                     "end_reason": "coverage_end",
                     "site_at_formation": self.registry.settings.site_ids[site],
@@ -170,6 +285,8 @@ class IntegratedCore(Engine):
                 if self._move_registered(hh, destination, "marriage"):
                     affected.update(members)
         self.pending_marriages.clear()
+        # New couples count as already moved for phase 40, like marriage moves.
+        affected.update(self.slot_map[int(p)] for p in self._in_marriages())
         r.partition(phase=40)
         # A marriage may replace singleton identities with a union identity.
         r.moved.update(

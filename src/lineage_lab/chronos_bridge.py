@@ -354,6 +354,10 @@ def complete_result(plan, config):
                                                 "pre_shock_population": config.initial_population,
                                                 "population": sum(r["population"] for r in first),
                                                 "effects_without_consequence": initial_effects_without_consequence(plan)}}}
+    if selected.historical.core_in_marriage:
+        result["provider_manifest"]["core_in_marriage_rule_version"] = (
+            selected.historical.core_in_marriage
+        )
     result["validation_proof"] = validate_population_result(result, plan["limits"])
     result["result_fingerprint"] = fingerprint(result)
     return result

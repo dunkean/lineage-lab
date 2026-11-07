@@ -11,6 +11,11 @@ from .historical_program import ProviderError
 
 CONTRACT = files("lineage_lab").joinpath("chronos_contract")
 SCHEMA = json.loads(CONTRACT.joinpath("population-plan.schema.json").read_text(encoding="utf-8"))
+# Core members who find no core partner marry a background resident of their site.
+IN_MARRIAGE_VERSION = "chronos-core-in-marriage-1"
+# Provider algorithms and the core marriage rule each one fixes. Version 1 keeps
+# the closed core, so plans that name it replay unchanged.
+ALGORITHMS = {"chronos-cohort-1": None, "chronos-cohort-2": IN_MARRIAGE_VERSION}
 SOCIETY_FIELDS = frozenset(
     [
         "childfree_rate_bps",
@@ -226,7 +231,7 @@ def validate_plan(plan, runtime):
     if provider["mode"] != "lineage_hybrid":
         invalid("Procedural demography requires S8", "provider.mode", "UnsupportedCapability")
     if (
-        provider["algorithm_id"] != "chronos-cohort-1"
+        provider["algorithm_id"] not in ALGORITHMS
         or provider["projection_version"] != "chronos-social-projection-1"
     ):
         invalid(
@@ -508,6 +513,7 @@ def translate_plan(plan):
         },
         "historical": {
             "registry_version": "chronos-resident-registry-1",
+            "core_in_marriage": ALGORITHMS.get(plan["provider"]["algorithm_id"]),
             "domain_id": plan["domain_id"],
             "site_ids": {s["provider_local_id"]: s["site_id"] for s in sites},
             "kinship_by_site": {s["provider_local_id"]: s["kinship_profile_id"] for s in sites},

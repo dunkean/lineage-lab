@@ -123,8 +123,11 @@ class ResidentRegistry:
         parents=None,
         families=None,
         flags=None,
+        origin_type=None,
+        phase=None,
     ):
         year = self.year if year is None else year
+        phase = phase if phase is not None else 20 if kind == "birth" else 10
         sexes = np.asarray(sexes, np.int32)
         count = len(sexes)
         if self.n + count > self.capacity:
@@ -156,7 +159,7 @@ class ResidentRegistry:
         self.cohorts.append(
             {
                 "origin_cohort_id": cohort_id,
-                "origin_type": kind,
+                "origin_type": origin_type or kind,
                 "ancestry_id": self.config.races[race].name,
                 "birth_year": birth,
                 "sex_counts": counts,
@@ -198,7 +201,7 @@ class ResidentRegistry:
                 if families is not None
                 else address("family", *key, "unallocated", sex, ordinal)
             )
-            self._open_residence(int(row), site, year, 20 if kind == "birth" else 10)
+            self._open_residence(int(row), site, year, phase)
             if parents is not None:
                 mother, father = map(int, parents[i])
                 d["mother"][row], d["father"][row] = mother, father
@@ -588,6 +591,37 @@ class ResidentRegistry:
                     self.partner.pop(pair["b"], None)
         self.moved.add(hh)
         return True
+
+    def leave_to_core(self, row):
+        """Phase 40 exit of one resident who marries into the simulated core.
+
+        The person leaves this component's coverage without a death or a site
+        move; the core opens a new slot at the same site and stamp, so site
+        totals are unchanged and no flow is counted. Any active union closes and
+        the remaining household members keep their household.
+        """
+        d = self.data
+        site = int(d["site"][row])
+        if site < 0 or d["death"][row] != NO_YEAR:
+            raise ProviderError("InvalidPopulationResult", "Core marriage requires a resident")
+        self._close_residence(row, self.year, 40, "departed_external")
+        d["site"][row] = -1
+        d["departure"][row] = d["coverage_end"][row] = self.year
+        self.living_rows = self.living_rows[self.living_rows != row]
+        for pair in self.pairs:
+            if pair["state"] == "active" and row in (pair["a"], pair["b"]):
+                pair["state"] = "closed"
+                self.former_partners.add(frozenset((pair["a"], pair["b"])))
+                union = self.unions[pair["union"]]
+                union["valid"]["end_year"] = self.year
+                union.update(end_phase=40, end_reason="coverage_departure")
+        partner = self.partner.pop(row, None)
+        if partner is not None:
+            self.partner.pop(partner, None)
+        hh = int(d["household"][row])
+        members = tuple(p for p in self.households[hh]["members"] if p != row)
+        self._commit_household(hh, members, site, 40)
+        d["household"][row] = -1
 
     def seal_pairs(self, rows):
         """Stable potential pairs over one sealed cohort, without forming unions."""

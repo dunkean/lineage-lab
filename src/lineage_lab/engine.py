@@ -546,6 +546,8 @@ class Engine:
         ]
         rate = s.founder_match_participation if initial else s.marriage_rate
         eligible = eligible[self.rng.random(len(eligible)) < rate]
+        # Searchers of this phase; a subclass may serve those left unmatched.
+        self.match_participants = eligible
         men, women = eligible[d["sex"][eligible] == 0], eligible[d["sex"][eligible] == 1].copy()
         if not len(men) or not len(women):
             return 0, 0
