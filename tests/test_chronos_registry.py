@@ -661,7 +661,7 @@ def test_core_in_marriage_counts_spouses_once_and_their_children_are_core():
     assert result["provider_manifest"]["core_in_marriage_rule_version"] == (
         "chronos-core-in-marriage-1"
     )
-    assert materialize(p)["result_fingerprint"] == result["result_fingerprint"]
+    assert materialize(p) == result
     c = result["candidate_table"]
     cohorts = {k["origin_cohort_id"]: k for k in result["origin_cohorts"]}
     spouses = {
