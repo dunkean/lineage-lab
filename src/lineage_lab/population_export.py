@@ -645,6 +645,7 @@ def validate_population_result(result, limits):
     }
     require(len(sparse) == len(result["cohort_residence_counts"]), "Duplicate sparse cohort count")
     recomputed_sparse = {}
+    origins, sexes, sources = c["origin_cohort_id"], c["sex"], c["source"]
     for year in range(start, end):
         while cursor < len(events) and events[cursor][0] <= (year, 80):
             _, kind, delta, p, site = events[cursor]
@@ -665,15 +666,13 @@ def validate_population_result(result, limits):
             "Household is outside member residence",
         )
         counts = defaultdict(int)
-        for p in np.flatnonzero(active["residence"]):
-            counts[sites[positions["residence"][p]], c["source"][p]] += 1
-            key = (
-                c["origin_cohort_id"][p],
-                sites[positions["residence"][p]],
-                c["sex"][p],
-                c["source"][p],
-                year,
-            )
+        present = np.flatnonzero(active["residence"])
+        for p, position in zip(
+            present.tolist(), positions["residence"][present].tolist(), strict=True
+        ):
+            site, source = sites[position], sources[p]
+            counts[site, source] += 1
+            key = (origins[p], site, sexes[p], source, year)
             recomputed_sparse[key] = recomputed_sparse.get(key, 0) + 1
         for site in sites:
             row = census_rows[site, year]

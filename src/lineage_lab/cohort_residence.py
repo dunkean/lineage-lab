@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from heapq import heappop, heappush
-from itertools import pairwise
 
 import numpy as np
 
@@ -101,20 +100,24 @@ class ResidentRegistry:
         order = radix_order(codes)
         keys = codes[order]
         boundaries = np.r_[0, np.flatnonzero(keys[1:] != keys[:-1]) + 1, len(keys)]
-        result = []
-        for a, b in pairwise(boundaries):
-            person = living[order[a]]
-            result.append(
-                {
-                    "origin_cohort_id": self.cohorts[d["cohort"][person]]["origin_cohort_id"],
-                    "site_id": self.site_ids[d["site"][person]],
-                    "sex": int(d["sex"][person]),
-                    "source": self.source,
-                    "year": self.year,
-                    "count": int(b - a),
-                }
+        people = living[order[boundaries[:-1]]]
+        return [
+            {
+                "origin_cohort_id": self.cohorts[cohort]["origin_cohort_id"],
+                "site_id": self.site_ids[site],
+                "sex": sex,
+                "source": self.source,
+                "year": self.year,
+                "count": count,
+            }
+            for cohort, site, sex, count in zip(
+                d["cohort"][people].tolist(),
+                d["site"][people].tolist(),
+                d["sex"][people].tolist(),
+                np.diff(boundaries).tolist(),
+                strict=True,
             )
-        return result
+        ]
 
     def open_year(self, year):
         self.year = year

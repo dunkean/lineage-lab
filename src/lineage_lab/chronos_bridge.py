@@ -57,12 +57,8 @@ ERROR_CODES = frozenset(
 
 
 def runtime_manifest():
-    import numba
-    import numpy as np
-
-    numba.config.CPU_NAME = "generic"
-    numba.config.CPU_FEATURES = ""
-    numba.set_num_threads(1)
+    # Installed versions: importing NumPy and Numba here would double every world open.
+    # The CPU target and thread count are pinned by the environment set above.
     package = Path(__file__).parent
     sources = {}
     for path in sorted(package.rglob("*")):
@@ -73,8 +69,8 @@ def runtime_manifest():
     return {
         "python": platform.python_version(),
         "python_implementation": platform.python_implementation(),
-        "numpy": np.__version__,
-        "numba": numba.__version__,
+        "numpy": importlib.metadata.version("numpy"),
+        "numba": importlib.metadata.version("numba"),
         "llvmlite": importlib.metadata.version("llvmlite"),
         "dependencies": {
             name: importlib.metadata.version(name)
