@@ -1,6 +1,7 @@
 """Executable S3 registry contracts and independent exported-table checks."""
 
 import copy
+import json
 from fractions import Fraction
 
 import numpy as np
@@ -653,7 +654,7 @@ def test_opening_draws_match_numpy():
 def test_compact_file_expands_to_the_same_tables():
     from lineage_lab.population_export import compact_result, expand_result
 
-    p = example("compact")
-    result = complete_result(p, translate_plan(p))
+    p = result_plan()
+    result = materialize(p)
     wire = json.loads(json.dumps(compact_result(result, p["domain_id"])))
     assert expand_result(wire) == json.loads(json.dumps(result))
