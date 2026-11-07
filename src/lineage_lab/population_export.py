@@ -9,7 +9,174 @@ import numpy as np
 from .historical_program import ProviderError
 from .registry_contract import NO_YEAR
 
-RESULT_FORMAT = "population-result-json-1"
+RESULT_FORMAT = "population-result-json-2"
+# Stands for the domain address inside `strings`.
+DOMAIN_TOKEN = "\x01"
+# Compact file: per table, its text columns; any other field is copied as it is.
+# `valid` becomes the columns `start_year` and `end_year`.
+WIRE_TABLES = {
+    "origin_cohorts": ("origin_cohort_id", "origin_type", "ancestry_id"),
+    "residence_index": ("site_id", "end_reason"),
+    "household_episodes": ("household_id", "kind", "formation_reason", "site_id"),
+    "union_allocations": (
+        "union_id",
+        "family_key",
+        "site_at_formation",
+        "source",
+        "end_reason",
+    ),
+    "birth_allocations": ("child_origin_cohort_id", "family_key", "parental_union_id", "site_id"),
+    "death_allocations": ("cause", "site_id"),
+    "residence_transfers": (
+        "transfer_id",
+        "household_id",
+        "from_site",
+        "to_site",
+        "reason",
+        "source",
+        "operation_id",
+        "port_id",
+    ),
+    "guardian_assignments": ("source",),
+    "parentage": ("precision",),
+    "cohort_residence_counts": ("origin_cohort_id", "site_id", "source"),
+}
+WIRE_CANDIDATE_TEXTS = (
+    "origin_id",
+    "origin_cohort_id",
+    "source",
+    "ancestry_id",
+    "death_site_id",
+    "departure_state",
+    "family_key",
+)
+# Row fields of each table, as the table form orders nothing: JSON objects are sorted.
+WIRE_FIELDS = {
+    "origin_cohorts": (
+        "origin_cohort_id",
+        "origin_type",
+        "ancestry_id",
+        "birth_year",
+        "sealed",
+        "sex_counts",
+    ),
+    "residence_index": (
+        "person_slot",
+        "site_id",
+        "valid",
+        "start_phase",
+        "end_phase",
+        "end_reason",
+    ),
+    "household_episodes": (
+        "household_id",
+        "kind",
+        "formation_reason",
+        "site_id",
+        "member_slots",
+        "valid",
+        "start_phase",
+        "end_phase",
+    ),
+    "union_allocations": (
+        "union_id",
+        "family_key",
+        "partner_slots",
+        "site_at_formation",
+        "source",
+        "valid",
+        "start_phase",
+        "end_phase",
+        "end_reason",
+    ),
+    "birth_allocations": (
+        "child_slot",
+        "child_origin_cohort_id",
+        "child_sex_ordinal",
+        "family_key",
+        "mother_slot",
+        "father_slot",
+        "parental_union_id",
+        "site_id",
+        "year",
+        "phase",
+    ),
+    "death_allocations": ("person_slot", "cause", "site_id", "year", "phase"),
+    "residence_transfers": (
+        "transfer_id",
+        "household_id",
+        "from_site",
+        "to_site",
+        "origin_slots",
+        "reason",
+        "source",
+        "operation_id",
+        "port_id",
+        "year",
+        "phase",
+    ),
+    "guardian_assignments": ("child_slot", "guardian_slot", "source", "year", "phase"),
+    "parentage": ("child_slot", "mother_slot", "father_slot", "precision"),
+    "cohort_residence_counts": ("origin_cohort_id", "site_id", "sex", "source", "year", "count"),
+}
+
+
+def compact_result(result, domain_id):
+    """Table form to `population-result-json-2`: same facts, columns and a string table."""
+    index = {}
+
+    def refs(column):
+        return [None if text is None else index.setdefault(text, len(index)) for text in column]
+
+    wire = dict(result)
+    for table, fields in WIRE_FIELDS.items():
+        rows, texts, columns = result[table], WIRE_TABLES[table], {}
+        for field in fields:
+            column = [row[field] for row in rows]
+            if field == "valid":
+                columns["start_year"] = [span["start_year"] for span in column]
+                columns["end_year"] = [span["end_year"] for span in column]
+            else:
+                columns[field] = refs(column) if field in texts else column
+        wire[table] = columns
+    candidates = dict(result["candidate_table"])
+    for field in WIRE_CANDIDATE_TEXTS:
+        candidates[field] = refs(candidates[field])
+    wire["candidate_table"] = candidates
+    if any(DOMAIN_TOKEN in text for text in index):
+        raise ProviderError(
+            "InvalidPopulationResult", "Reserved character in an identifier", constraint="strings"
+        )
+    wire["domain_id"] = domain_id
+    wire["strings"] = [text.replace(domain_id, DOMAIN_TOKEN) for text in index]
+    return wire
+
+
+def expand_result(wire):
+    """Inverse of `compact_result`, for checks on a published file."""
+    strings = [text.replace(DOMAIN_TOKEN, wire["domain_id"]) for text in wire["strings"]]
+
+    def texts(column):
+        return [None if i is None else strings[i] for i in column]
+
+    result = {k: v for k, v in wire.items() if k not in {"domain_id", "strings"}}
+    for table, fields in WIRE_FIELDS.items():
+        columns = dict(wire[table])
+        if "valid" in fields:
+            columns["valid"] = [
+                {"start_year": a, "end_year": b}
+                for a, b in zip(columns.pop("start_year"), columns.pop("end_year"), strict=True)
+            ]
+        for field in WIRE_TABLES[table]:
+            columns[field] = texts(columns[field])
+        result[table] = [
+            dict(zip(columns, row, strict=True)) for row in zip(*columns.values(), strict=True)
+        ]
+    candidates = dict(wire["candidate_table"])
+    for field in WIRE_CANDIDATE_TEXTS:
+        candidates[field] = texts(candidates[field])
+    result["candidate_table"] = candidates
+    return result
 
 
 def export_tables(registries, core=None):

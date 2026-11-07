@@ -355,7 +355,6 @@ def complete_result(plan, config):
                                                 "population": sum(r["population"] for r in first),
                                                 "effects_without_consequence": initial_effects_without_consequence(plan)}}}
     result["validation_proof"] = validate_population_result(result, plan["limits"])
-    result["result_fingerprint"] = fingerprint(result)
     return result
 
 
@@ -383,7 +382,7 @@ class Worker:
         }
 
     def materialize(self, plan_id, payload_ref):
-        from .population_export import RESULT_FORMAT
+        from .population_export import RESULT_FORMAT, compact_result
         if type(plan_id) is not str or not plan_id:
             raise ProviderError(
                 "PopulationConstraintsUnsatisfied", "A nonempty plan_id is required",
@@ -411,7 +410,9 @@ class Worker:
         np.random.seed(int(plan["seed"]) % 2**32)
         numba.set_num_threads(1)
         result = complete_result(plan, config)
-        content = canonical_bytes(result)
+        wire = compact_result(result, plan["domain_id"])
+        wire["result_fingerprint"] = fingerprint(wire)
+        content = canonical_bytes(wire)
         if len(content) > plan["limits"]["max_result_bytes"]:
             raise ProviderError(
                 "BudgetExceeded", "Result exceeds max_result_bytes", constraint="max_result_bytes"
@@ -435,7 +436,7 @@ class Worker:
             raise
         return {
             "plan_id": plan_id,
-            "result_fingerprint": result["result_fingerprint"],
+            "result_fingerprint": wire["result_fingerprint"],
             "job_directory": directory.relative_to(self.job_root).as_posix(),
             "result_ref": {
                 "relative_path": target.relative_to(directory).as_posix(),

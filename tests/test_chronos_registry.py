@@ -648,3 +648,12 @@ def test_opening_draws_match_numpy():
         rng = stream(42, *part)
         assert double == rng.random()
         assert salt == rng.integers(0, 2**64, dtype=np.uint64)
+
+
+def test_compact_file_expands_to_the_same_tables():
+    from lineage_lab.population_export import compact_result, expand_result
+
+    p = example("compact")
+    result = complete_result(p, translate_plan(p))
+    wire = json.loads(json.dumps(compact_result(result, p["domain_id"])))
+    assert expand_result(wire) == json.loads(json.dumps(result))
