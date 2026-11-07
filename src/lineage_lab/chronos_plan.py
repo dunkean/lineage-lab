@@ -78,30 +78,35 @@ def invalid(message, path="plan", code="PopulationConstraintsUnsatisfied"):
     raise ProviderError(code, message, constraint=path)
 
 
+_SCALARS = frozenset({str, int, bool, type(None)})
+_ENCODE = json.JSONEncoder(
+    ensure_ascii=False,
+    sort_keys=True,
+    separators=(",", ":"),
+    allow_nan=False,
+    check_circular=False,
+).encode
+
+
 def canonical_bytes(value):
     """§4.2: no floats, BOM, whitespace, ASCII escaping or non-JSON values."""
 
-    def check(node):
-        if node is None or type(node) in (bool, int):
-            return
-        if type(node) is str:
-            node.encode("utf-8")  # Reject unpaired surrogates.
-        elif type(node) is list:
-            for item in node:
-                check(item)
-        elif type(node) is dict and all(type(k) is str for k in node):
-            for key, item in node.items():
-                check(key)
-                check(item)
-        else:
-            invalid(
-                "Canonical JSON only accepts integers, strings, booleans, null, lists and objects"
-            )
+    def check(items):
+        # Type sets run at C speed. Unpaired surrogates fail the final UTF-8 encoding.
+        if not _SCALARS.issuperset(map(type, items)):
+            for node in items:
+                if type(node) is list:
+                    check(node)
+                elif type(node) is dict and all(type(k) is str for k in node):
+                    check(node.values())
+                elif type(node) not in _SCALARS:
+                    invalid(
+                        "Canonical JSON only accepts integers, strings, booleans, null, "
+                        "lists and objects"
+                    )
 
-    check(value)
-    return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False
-    ).encode("utf-8")
+    check((value,))
+    return _ENCODE(value).encode("utf-8")
 
 
 def fingerprint(value):

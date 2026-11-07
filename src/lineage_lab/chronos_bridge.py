@@ -57,12 +57,8 @@ ERROR_CODES = frozenset(
 
 
 def runtime_manifest():
-    import numba
-    import numpy as np
-
-    numba.config.CPU_NAME = "generic"
-    numba.config.CPU_FEATURES = ""
-    numba.set_num_threads(1)
+    # Installed versions: importing NumPy and Numba here would double every world open.
+    # The CPU target and thread count are pinned by the environment set above.
     package = Path(__file__).parent
     sources = {}
     for path in sorted(package.rglob("*")):
@@ -73,8 +69,8 @@ def runtime_manifest():
     return {
         "python": platform.python_version(),
         "python_implementation": platform.python_implementation(),
-        "numpy": np.__version__,
-        "numba": numba.__version__,
+        "numpy": importlib.metadata.version("numpy"),
+        "numba": importlib.metadata.version("numba"),
         "llvmlite": importlib.metadata.version("llvmlite"),
         "dependencies": {
             name: importlib.metadata.version(name)
@@ -359,7 +355,6 @@ def complete_result(plan, config):
             selected.historical.core_in_marriage
         )
     result["validation_proof"] = validate_population_result(result, plan["limits"])
-    result["result_fingerprint"] = fingerprint(result)
     return result
 
 
@@ -387,7 +382,7 @@ class Worker:
         }
 
     def materialize(self, plan_id, payload_ref):
-        from .population_export import RESULT_FORMAT
+        from .population_export import RESULT_FORMAT, compact_result
         if type(plan_id) is not str or not plan_id:
             raise ProviderError(
                 "PopulationConstraintsUnsatisfied", "A nonempty plan_id is required",
@@ -415,7 +410,9 @@ class Worker:
         np.random.seed(int(plan["seed"]) % 2**32)
         numba.set_num_threads(1)
         result = complete_result(plan, config)
-        content = canonical_bytes(result)
+        wire = compact_result(result, plan["domain_id"])
+        wire["result_fingerprint"] = fingerprint(wire)
+        content = canonical_bytes(wire)
         if len(content) > plan["limits"]["max_result_bytes"]:
             raise ProviderError(
                 "BudgetExceeded", "Result exceeds max_result_bytes", constraint="max_result_bytes"
@@ -439,7 +436,7 @@ class Worker:
             raise
         return {
             "plan_id": plan_id,
-            "result_fingerprint": result["result_fingerprint"],
+            "result_fingerprint": wire["result_fingerprint"],
             "job_directory": directory.relative_to(self.job_root).as_posix(),
             "result_ref": {
                 "relative_path": target.relative_to(directory).as_posix(),

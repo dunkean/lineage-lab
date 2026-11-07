@@ -1,6 +1,7 @@
 """Executable S3 registry contracts and independent exported-table checks."""
 
 import copy
+import json
 from fractions import Fraction
 
 import numpy as np
@@ -509,6 +510,7 @@ def test_successful_birth_spacing_is_per_ancestry_with_temporary_interruption():
             previous[mother] = year
         r.data["site"][before : r.n] = -1
         del r.pairs[40:]
+        del r.open_pairs[40:]
     assert counts == [100, 40]
 
 
@@ -714,3 +716,25 @@ def test_version_one_plans_keep_a_closed_core():
     assert "core_in_marriage_rule_version" not in result["provider_manifest"]
     assert "core_in_marriage" not in result["diagnostics"]
     assert not any('"core_in_marriage"' in k["origin_cohort_id"] for k in result["origin_cohorts"])
+
+
+def test_opening_draws_match_numpy():
+    from lineage_lab.chronos_plan import canonical_bytes
+    from lineage_lab.registry_contract import opening_draws, stream
+
+    parts = [["death", index, "é\"", None, index % 2 == 0] for index in range(2000)]
+    keys = [canonical_bytes(["chronos-registry-rng-1", "42", *p]) for p in parts]
+    doubles, salts = opening_draws(keys)
+    for part, double, salt in zip(parts, doubles, salts, strict=True):
+        rng = stream(42, *part)
+        assert double == rng.random()
+        assert salt == rng.integers(0, 2**64, dtype=np.uint64)
+
+
+def test_compact_file_expands_to_the_same_tables():
+    from lineage_lab.population_export import compact_result, expand_result
+
+    p = result_plan()
+    result = materialize(p)
+    wire = json.loads(json.dumps(compact_result(result, p["domain_id"])))
+    assert expand_result(wire) == json.loads(json.dumps(result))

@@ -42,7 +42,11 @@ from lineage_lab.historical_program import (
     apply_initial_program,
     mortality_probability,
 )
-from lineage_lab.population_export import RESULT_FORMAT, validate_population_result
+from lineage_lab.population_export import (
+    RESULT_FORMAT,
+    expand_result,
+    validate_population_result,
+)
 
 
 @pytest.fixture(scope="module")
@@ -271,7 +275,7 @@ def read_result(worker, response):
     )
     assert response["result_fingerprint"] == result["result_fingerprint"]
     assert not list(root.glob("*.partial"))
-    return result
+    return expand_result(result)
 
 
 def test_bundled_contract_bytes_are_pinned():

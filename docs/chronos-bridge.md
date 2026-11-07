@@ -1,8 +1,11 @@
 # Chronos bridge, complete S3 registry
 
-`Worker.materialize` now publishes **`population-result-json-1`**, with
+`Worker.materialize` now publishes **`population-result-json-2`**, with
 `result_type="PopulationResult"`, `complete=true`, and independently checked
-exported tables. The protocol remains `chronos-lineage-1`; `prepare` announces
+exported tables. Format 2 holds the facts of format 1 in columns: each long or
+repeated text is an index into `strings`, where U+0001 stands for `domain_id`
+(`compact_result` and `expand_result` in `population_export.py`). The tables
+are validated in row form, before compaction. The protocol remains `chronos-lineage-1`; `prepare` announces
 complete coverage. Publication is atomic as `population-result.json`. Runtime
 and result fingerprints must be repinned; the bundled input schema/example and
 requirements lock have not changed. The stage-1 notes below are historical
@@ -193,7 +196,7 @@ Durations appear only in the envelope's `metrics`.
 
 The artifact uses **`chronos-lineage-partial-json-1`**, with
 `result_type=PartialPopulationDiagnostics`, `coverage=partial`, `complete=false`
-and `stage=S3-step-1`. It is not `population-result-json-1` or a complete
+and `stage=S3-step-1`. It is not `population-result-json-2` or a complete
 `PopulationResult`; it must not pass the host's `VerifiedPopulation` gate.
 It includes:
 

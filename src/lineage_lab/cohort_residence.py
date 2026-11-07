@@ -10,12 +10,19 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from heapq import heappop, heappush
-from itertools import pairwise
 
 import numpy as np
 
 from .historical_program import ProviderError
-from .registry_contract import NO_YEAR, REPAIRING_VERSION, address, stream
+from .registry_contract import (
+    NO_YEAR,
+    REPAIRING_VERSION,
+    address,
+    encoded,
+    key_prefix,
+    opening_draws,
+    stream,
+)
 from .registry_kernels import count_living_sites, radix_order
 
 
@@ -62,6 +69,9 @@ class ResidentRegistry:
         self.residences, self.residence_index = [], {}
         self.births, self.deaths, self.transfers, self.guardians = [], [], [], []
         self.pairs, self.unions, self.households, self.episodes = [], [], [], []
+        # `pairs` in order, without those already closed: a closed pair never reopens.
+        self.open_pairs = []
+        self.key_prefix = key_prefix(config.seed)
         self.hh_keys, self.hh_episode = {}, {}
         self.children = defaultdict(list)
         self.declared_guardians = defaultdict(list)
@@ -90,20 +100,24 @@ class ResidentRegistry:
         order = radix_order(codes)
         keys = codes[order]
         boundaries = np.r_[0, np.flatnonzero(keys[1:] != keys[:-1]) + 1, len(keys)]
-        result = []
-        for a, b in pairwise(boundaries):
-            person = living[order[a]]
-            result.append(
-                {
-                    "origin_cohort_id": self.cohorts[d["cohort"][person]]["origin_cohort_id"],
-                    "site_id": self.site_ids[d["site"][person]],
-                    "sex": int(d["sex"][person]),
-                    "source": self.source,
-                    "year": self.year,
-                    "count": int(b - a),
-                }
+        people = living[order[boundaries[:-1]]]
+        return [
+            {
+                "origin_cohort_id": self.cohorts[cohort]["origin_cohort_id"],
+                "site_id": self.site_ids[site],
+                "sex": sex,
+                "source": self.source,
+                "year": self.year,
+                "count": count,
+            }
+            for cohort, site, sex, count in zip(
+                d["cohort"][people].tolist(),
+                d["site"][people].tolist(),
+                d["sex"][people].tolist(),
+                np.diff(boundaries).tolist(),
+                strict=True,
             )
-        return result
+        ]
 
     def open_year(self, year):
         self.year = year
@@ -269,31 +283,49 @@ class ResidentRegistry:
             self.living_rows = self.living_rows[d["death"][self.living_rows] == NO_YEAR]
             self._repair_death_memberships()
 
+    def _columns(self, *fields):
+        """Python copies of registry columns, for loops that read them row by row."""
+        return [self.data[field][: self.n].tolist() for field in fields]
+
+    def _commit_all(self, memberships, site_of, phase):
+        """Commit every household holding or receiving members, in table order.
+
+        A household that stays empty on its site has nothing to commit.
+        """
+        touched = set(memberships).union(*self.site_households)
+        for hh in sorted(touched):
+            if hh >= 0:
+                members = tuple(memberships.get(hh, ()))
+                self._commit_household(hh, members, site_of(hh, members), phase)
+
     def _repair_death_memberships(self):
         """Remove dead members and repair custody at phase 30, before new unions."""
         d, living = self.data, self.living()
-        adult_set = {
-            int(p) for p in living if self.year - d["birth"][p] >= self.config.society.dependent_age
-        }
+        rows = living.tolist()
+        grown = (self.year - d["birth"][living] >= self.config.society.dependent_age).tolist()
+        adult_set = {row for row, adult in zip(rows, grown, strict=True) if adult}
+        site_of, guardian_of, household_of, mother_of, father_of = self._columns(
+            "site", "guardian", "household", "mother", "father"
+        )
         memberships = defaultdict(list)
-        for row in map(int, living):
-            hh = int(d["household"][row])
-            if row not in adult_set:
-                site = int(d["site"][row])
-                guardian = int(d["guardian"][row])
-                if guardian not in adult_set or d["site"][guardian] != site:
+        for row, adult in zip(rows, grown, strict=True):
+            hh = household_of[row]
+            if not adult:
+                site = site_of[row]
+                guardian = guardian_of[row]
+                if guardian not in adult_set or site_of[guardian] != site:
                     declared = [
                         p
                         for p in self.declared_guardians[row]
-                        if p in adult_set and d["site"][p] == site
+                        if p in adult_set and site_of[p] == site
                     ]
                     options = declared or [
-                        int(d[f][row])
-                        for f in ("mother", "father")
-                        if int(d[f][row]) in adult_set and d["site"][int(d[f][row])] == site
+                        parent
+                        for parent in (mother_of[row], father_of[row])
+                        if parent in adult_set and site_of[parent] == site
                     ]
                     guardian = min(options, key=lambda p: self.ids[p]) if options else -1
-                    if guardian != d["guardian"][row]:
+                    if guardian != guardian_of[row]:
                         self.guardians.append(
                             {
                                 "child_slot": row,
@@ -309,7 +341,7 @@ class ResidentRegistry:
                         )
                         d["guardian"][row] = guardian
                 hh = (
-                    int(d["household"][guardian])
+                    household_of[guardian]
                     if guardian >= 0
                     else self.new_household(
                         ["care", self.site_ids[site]], site, "synthetic_care", "synthetic_care"
@@ -318,8 +350,7 @@ class ResidentRegistry:
                 d["household"][row] = hh
             if hh >= 0:
                 memberships[hh].append(row)
-        for hh, household in enumerate(self.households):
-            self._commit_household(hh, tuple(memberships.get(hh, ())), household["site"], 30)
+        self._commit_all(memberships, lambda hh, _: self.households[hh]["site"], 30)
 
     def new_household(self, key, site, kind, reason):
         household_id = address("household", self.domain, self.source, *key)
@@ -347,26 +378,31 @@ class ResidentRegistry:
     def partition(self, *, founder=False, force_single=(), phase=35):
         """Compute a complete destination partition, then commit atomically."""
         d, living = self.data, self.living()
-        adults = living[self.year - d["birth"][living] >= self.config.society.dependent_age]
-        adult_set, forced = set(map(int, adults)), set(map(int, force_single))
-        established_adults = {int(p) for p in adults if d["adult_initialized"][p]}
+        grown = self.year - d["birth"][living] >= self.config.society.dependent_age
+        adults = living[grown]
+        adult_rows = adults.tolist()
+        adult_set, forced = set(adult_rows), set(map(int, force_single))
+        established_adults = set(adults[d["adult_initialized"][adults] != 0].tolist())
+        site_of, household_of = self._columns("site", "household")
         destinations = {}
-        for row in map(int, adults):
+        for row in adult_rows:
             partner = self.partner.get(row, -1)
-            if partner in adult_set and d["site"][partner] == d["site"][row]:
-                a, b = sorted((row, partner), key=lambda p: self.ids[p])
-                key = ["union", *self.slot_keys[a], *self.slot_keys[b], self.year]
-                old = int(d["household"][row])
-                other = int(d["household"][partner])
-                if old >= 0 and old == other and self.households[old]["kind"] == "union":
+            old = household_of[row]
+            if partner in adult_set and site_of[partner] == site_of[row]:
+                if (
+                    old >= 0
+                    and old == household_of[partner]
+                    and self.households[old]["kind"] == "union"
+                ):
                     hh = old
                 else:
                     hh = destinations.get(partner)
                     if hh is None:
-                        hh = self.new_household(key, int(d["site"][row]), "union", "union")
+                        a, b = sorted((row, partner), key=lambda p: self.ids[p])
+                        key = ["union", *self.slot_keys[a], *self.slot_keys[b], self.year]
+                        hh = self.new_household(key, site_of[row], "union", "union")
                 destinations[row] = hh
             else:
-                old = int(d["household"][row])
                 keep = (
                     old >= 0
                     and row not in forced
@@ -382,26 +418,27 @@ class ResidentRegistry:
                     ]
                     keep = len(occupants) <= 1
                 destinations[row] = old if keep else self._single(row)
-            d["adult_initialized"][row] = 1
-        dependants = [int(p) for p in living if p not in adult_set]
+        d["adult_initialized"][adults] = 1
+        dependants = living[~grown].tolist()
         if founder:
             self._founder_guardians(dependants, adults, destinations)
+        guardian_of, mother_of, father_of = self._columns("guardian", "mother", "father")
         for row in dependants:
-            site = int(d["site"][row])
-            guardian = int(d["guardian"][row])
-            if guardian not in destinations or d["site"][guardian] != site:
+            site = site_of[row]
+            guardian = guardian_of[row]
+            if guardian not in destinations or site_of[guardian] != site:
                 declared = [
                     p
                     for p in self.declared_guardians[row]
-                    if p in destinations and d["site"][p] == site
+                    if p in destinations and site_of[p] == site
                 ]
                 options = declared or [
-                    int(d[f][row])
-                    for f in ("mother", "father")
-                    if int(d[f][row]) in destinations and d["site"][int(d[f][row])] == site
+                    parent
+                    for parent in (mother_of[row], father_of[row])
+                    if parent in destinations and site_of[parent] == site
                 ]
                 guardian = min(options, key=lambda p: self.ids[p]) if options else -1
-                if guardian != d["guardian"][row]:
+                if guardian != guardian_of[row]:
                     self.guardians.append(
                         {
                             "child_slot": row,
@@ -423,14 +460,16 @@ class ResidentRegistry:
                     ["care", self.site_ids[site]], site, "synthetic_care", "synthetic_care"
                 )
         memberships = defaultdict(list)
-        for row in map(int, living):
-            hh = destinations[row]
-            d["household"][row] = hh
+        rows = living.tolist()
+        chosen = [destinations[row] for row in rows]
+        d["household"][living] = chosen
+        for row, hh in zip(rows, chosen, strict=True):
             memberships[hh].append(row)
-        for hh, household in enumerate(self.households):
-            members = tuple(memberships.get(hh, ()))
-            site = int(d["site"][members[0]]) if members else household["site"]
-            self._commit_household(hh, members, site, phase if not founder else 10)
+
+        def site_after(hh, members):
+            return site_of[members[0]] if members else self.households[hh]["site"]
+
+        self._commit_all(memberships, site_after, phase if not founder else 10)
 
     def _founder_guardians(self, dependants, adults, destinations):
         d = self.data
@@ -579,7 +618,7 @@ class ResidentRegistry:
         else:
             self.living_rows = self.living_rows[d["departure"][self.living_rows] == NO_YEAR]
             member_set = set(members)
-            for pair in self.pairs:
+            for pair in self.open_pairs:
                 if pair["state"] == "active" and (
                     pair["a"] in member_set or pair["b"] in member_set
                 ):
@@ -623,6 +662,11 @@ class ResidentRegistry:
         self._commit_household(hh, members, site, 40)
         d["household"][row] = -1
 
+    def add_pair(self, pair):
+        pair["encoded_key"] = encoded(pair["key"])
+        self.pairs.append(pair)
+        self.open_pairs.append(pair)
+
     def seal_pairs(self, rows):
         """Stable potential pairs over one sealed cohort, without forming unions."""
         d = self.data
@@ -643,21 +687,41 @@ class ResidentRegistry:
                 "union": None,
             }
             self.sealed_pair[int(man)] = self.sealed_pair[int(woman)] = pair
-            self.pairs.append(pair)
+            self.add_pair(pair)
 
     def activate_pairs(self, *, initial=False):
-        d, society = self.data, self.config.society
-        forced = []
-        for pair in self.pairs:
+        society = self.config.society
+        site_of, death_of, birth_of = self._columns("site", "death", "birth")
+        self.open_pairs = [pair for pair in self.open_pairs if pair["state"] != "closed"]
+        low, high = society.marriage_min_age, society.marriage_max_age
+        divorce_key = self.key_prefix + b'"divorce",'
+        union_key = self.key_prefix + b'"form_union",'
+        tail = b",%d]" % self.year
+        steps, keys = [], []
+        for pair in self.open_pairs:
             a, b = pair["a"], pair["b"]
-            present = d["site"][a] >= 0 and d["site"][b] >= 0
             if pair["state"] == "active":
-                dead = d["death"][a] != NO_YEAR or d["death"][b] != NO_YEAR
-                divorced = (
-                    not initial
-                    and stream(self.config.seed, "divorce", pair["key"], self.year).random()
-                    < society.divorce_rate
-                )
+                steps.append(pair)
+                if not initial:
+                    keys.append(divorce_key + pair["encoded_key"] + tail)
+                continue
+            if site_of[a] < 0 or site_of[b] < 0 or site_of[a] != site_of[b]:
+                if death_of[a] != NO_YEAR or death_of[b] != NO_YEAR:
+                    pair["state"] = "closed"
+                continue
+            if low <= self.year - birth_of[a] <= high and low <= self.year - birth_of[b] <= high:
+                steps.append(pair)
+                keys.append(union_key + pair["encoded_key"] + tail)
+        # Keyed draws do not depend on the order they are taken in.
+        draws = iter(opening_draws(keys)[0].tolist())
+        rate = society.founder_match_participation if initial else society.marriage_rate
+        forced = []
+        for pair in steps:
+            a, b = pair["a"], pair["b"]
+            if pair["state"] == "active":
+                present = site_of[a] >= 0 and site_of[b] >= 0
+                dead = death_of[a] != NO_YEAR or death_of[b] != NO_YEAR
+                divorced = not initial and next(draws) < society.divorce_rate
                 if dead or divorced or not present:
                     pair["state"] = "closed"
                     self.former_partners.add(frozenset((a, b)))
@@ -669,15 +733,7 @@ class ResidentRegistry:
                     if divorced and not dead:
                         forced.extend((a, b))
                 continue
-            if pair["state"] == "closed" or not present or d["site"][a] != d["site"][b]:
-                if d["death"][a] != NO_YEAR or d["death"][b] != NO_YEAR:
-                    pair["state"] = "closed"
-                continue
-            ages = [self.year - int(d["birth"][p]) for p in (a, b)]
-            if not all(society.marriage_min_age <= age <= society.marriage_max_age for age in ages):
-                continue
-            rate = society.founder_match_participation if initial else society.marriage_rate
-            if stream(self.config.seed, "form_union", pair["key"], self.year).random() >= rate:
+            if next(draws) >= rate:
                 continue
             pair.update(state="active", formed=self.year, union=len(self.unions))
             self.partner[a], self.partner[b] = b, a
@@ -690,36 +746,40 @@ class ResidentRegistry:
                     "start_phase": 10 if initial else 35,
                     "end_phase": 0,
                     "end_reason": "coverage_end",
-                    "site_at_formation": self.site_ids[int(d["site"][a])],
+                    "site_at_formation": self.site_ids[site_of[a]],
                     "source": "projected",
                 }
             )
         return forced
 
-    def _kin(self, a, b):
+    def _kin(self, a, b, known=None):
         """Shared ancestor within the society's kinship depth, or direct descent."""
         d, depth = self.data, self.config.society.kinship_depth
+        known = {} if known is None else known
 
         def lineage(row):
-            people, frontier = {row}, [row]
-            for _ in range(depth):
-                frontier = [
-                    int(d[f][p]) for p in frontier for f in ("mother", "father") if d[f][p] >= 0
-                ]
-                people.update(frontier)
+            people = known.get(row)
+            if people is None:
+                people, frontier = {row}, [row]
+                for _ in range(depth):
+                    frontier = [
+                        int(d[f][p]) for p in frontier for f in ("mother", "father") if d[f][p] >= 0
+                    ]
+                    people.update(frontier)
+                known[row] = people
             return people
 
         return not lineage(a).isdisjoint(lineage(b))
 
-    def _awaits_sealed_partner(self, row):
+    def _awaits_sealed_partner(self, row, site_of, birth_of):
         pair = self.sealed_pair.get(row)
         if pair is None or pair["state"] != "unformed":
             return False
-        d, society = self.data, self.config.society
+        society = self.config.society
         other = pair["a"] if pair["b"] == row else pair["b"]
-        age = self.year - int(d["birth"][other])
+        age = self.year - birth_of[other]
         return (
-            d["site"][other] == d["site"][row]
+            site_of[other] == site_of[row]
             and other not in self.partner
             and society.marriage_min_age <= age <= society.marriage_max_age
         )
@@ -735,32 +795,42 @@ class ResidentRegistry:
         pool is matched in age order, within the age gap, outside kin and former
         partners. Draws are keyed on slot and year, never on table order.
         """
-        d, society = self.data, self.config.society
+        society = self.config.society
+        site_of, birth_of, sex_of, race_of = self._columns("site", "birth", "sex", "race")
+        low, high = society.marriage_min_age, society.marriage_max_age
         pools = defaultdict(lambda: ([], []))
-        for row in map(int, self.living()):
-            age = self.year - int(d["birth"][row])
+        prefix = self.key_prefix + encoded(REPAIRING_VERSION) + b","
+        tail = b",%d]" % self.year
+        single, keys = [], []
+        for row in self.living().tolist():
             if (
                 row in self.partner
-                or not society.marriage_min_age <= age <= society.marriage_max_age
-                or self._awaits_sealed_partner(row)
+                or not low <= self.year - birth_of[row] <= high
+                or self._awaits_sealed_partner(row, site_of, birth_of)
             ):
                 continue
-            sex = int(d["sex"][row])
-            draw = stream(self.config.seed, REPAIRING_VERSION, self.ids[row], self.year)
-            if sex == 0 or draw.random() < society.marriage_rate:
-                pools[int(d["site"][row]), int(d["race"][row])][sex].append(row)
+            single.append(row)
+            if sex_of[row] != 0:
+                keys.append(prefix + encoded(self.ids[row]) + tail)
+        # Keyed draws do not depend on the order they are taken in.
+        draws = iter(opening_draws(keys)[0].tolist())
+        for row in single:
+            sex = sex_of[row]
+            if sex == 0 or next(draws) < society.marriage_rate:
+                pools[site_of[row], race_of[row]][sex].append(row)
+        lineages = {}
         for (site, _), (men, women) in sorted(pools.items()):
-            men.sort(key=lambda p: (int(d["birth"][p]), self.ids[p]))
-            women.sort(key=lambda p: (int(d["birth"][p]), self.ids[p]))
+            men.sort(key=lambda p: (birth_of[p], self.ids[p]))
+            women.sort(key=lambda p: (birth_of[p], self.ids[p]))
             for woman in women:
                 for index, man in enumerate(men):
-                    gap = int(d["birth"][man]) - int(d["birth"][woman])
+                    gap = birth_of[man] - birth_of[woman]
                     if gap > society.max_age_gap:
                         break
                     if (
                         gap >= -society.max_age_gap
                         and frozenset((man, woman)) not in self.former_partners
-                        and not self._kin(man, woman)
+                        and not self._kin(man, woman, lineages)
                     ):
                         del men[index]
                         self._repair_union(man, woman, site)
@@ -780,7 +850,7 @@ class ResidentRegistry:
             *self.slot_keys[woman],
             self.year,
         )
-        self.pairs.append(
+        self.add_pair(
             {
                 "key": key,
                 "a": man,
